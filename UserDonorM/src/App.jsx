@@ -1,24 +1,56 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useData } from './context/DataContext'
 import {
   SideNav, HeaderBar,
   HomePage, CampaignsPage, CampaignDetailsPage,
   DonationPage, ThankYouPage, DashboardPage,
   TransparencyPage, ContactPage, AboutPage, LoginPage,
-  CAMPAIGNS,
 } from './pages'
+import { MyMessages } from './pages/MyMessages.jsx'
+
+const PROTECTED_PAGES = ['dashboard', 'my-messages']
+const TRANSIENT_PAGES = ['thank-you', 'donate', 'campaign-details']
 
 export default function App() {
-  const { logout, user, isAuthenticated, addDonation, donations } = useData()
-  const [activePage, setActivePage] = useState('home')
+  const { logout, user, isAuthenticated, addDonation, donations, campaigns } = useData()
+
+  const [activePage, setActivePage] = useState(() => {
+    const hash = window.location.hash.replace('#', '')
+    if (!hash || TRANSIENT_PAGES.includes(hash)) return 'home'
+    if (PROTECTED_PAGES.includes(hash) && !isAuthenticated) return 'login'
+    return hash
+  })
+
   const [isLoggedIn, setIsLoggedIn] = useState(isAuthenticated)
   const [userName, setUserName] = useState(user?.name || '')
   const [selectedCampaignId, setSelectedCampaignId] = useState(null)
   const [lastDonation, setLastDonation] = useState(null)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
-  const selectedCampaign = CAMPAIGNS.find((c) => c.id === selectedCampaignId) || CAMPAIGNS[0]
-  const recentDonationsForSelected = donations.filter((d) => d.campaignId === selectedCampaign.id)
+  const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId) || campaigns[0]
+
+  useEffect(() => {
+    if (TRANSIENT_PAGES.includes(activePage)) {
+      window.location.hash = ''
+    } else {
+      window.location.hash = activePage
+    }
+  }, [activePage])
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '')
+      if (!hash) return
+      if (TRANSIENT_PAGES.includes(activePage)) return
+      if (PROTECTED_PAGES.includes(hash) && !isLoggedIn) {
+        setActivePage('login')
+        return
+      }
+      setActivePage(hash)
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [isLoggedIn, activePage])
 
   const handleNavigate = (pageId) => {
     if (pageId === 'logout') {
@@ -53,11 +85,11 @@ export default function App() {
       amount: donation.amount,
       type: donation.type === 'Monthly (Recurring)' ? 'Recurring' : 'One-time',
       campaign: donation.campaignTitle,
+      campaignId: donation.campaignId,   // ← ensures backend resolves correct title
       channel: donation.method,
       notes: donation.message || '',
     }
 
-    // ✅ Use addDonation from DataContext so donations update in My Dashboard
     const saved = await addDonation(payload)
 
     if (saved) {
@@ -83,18 +115,20 @@ export default function App() {
         <HeaderBar
           userName={userName}
           onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+          onNavigate={handleNavigate}
         />
         <main className="flex-1 w-full p-8 overflow-y-auto">
-          {activePage === 'home'            && <HomePage onDonate={handleDonateStart} onViewCampaigns={() => setActivePage('campaigns')} donations={donations} />}
-          {activePage === 'campaigns'       && <CampaignsPage onViewDetails={handleViewDetails} onDonate={handleDonateStart} />}
-          {activePage === 'campaign-details'&& <CampaignDetailsPage campaign={selectedCampaign} recentDonations={recentDonationsForSelected} onDonate={handleDonateStart} />}
-          {activePage === 'donate'          && <DonationPage campaigns={CAMPAIGNS} selectedCampaignId={selectedCampaignId} onSubmit={handleDonationSubmit} onBackToCampaign={() => setActivePage('campaign-details')} />}
-          {activePage === 'thank-you'       && <ThankYouPage donation={lastDonation} onBackHome={() => setActivePage('home')} onViewCampaign={() => setActivePage('campaign-details')} />}
-          {activePage === 'dashboard'       && <DashboardPage donations={donations} />}
-          {activePage === 'transparency'    && <TransparencyPage />}
-          {activePage === 'contact'         && <ContactPage />}
-          {activePage === 'about'           && <AboutPage />}
-          {activePage === 'login'           && <LoginPage onLoginSuccess={handleLoginSuccess} />}
+          {activePage === 'home'             && <HomePage onDonate={handleDonateStart} onViewCampaigns={() => setActivePage('campaigns')} />}
+          {activePage === 'campaigns'        && <CampaignsPage onViewDetails={handleViewDetails} onDonate={handleDonateStart} />}
+          {activePage === 'campaign-details' && <CampaignDetailsPage campaign={selectedCampaign} onDonate={handleDonateStart} />}
+          {activePage === 'donate'           && <DonationPage selectedCampaignId={selectedCampaignId} onSubmit={handleDonationSubmit} onBackToCampaign={() => setActivePage('campaign-details')} />}
+          {activePage === 'thank-you'        && <ThankYouPage donation={lastDonation} onBackHome={() => setActivePage('home')} onViewCampaign={() => setActivePage('campaign-details')} />}
+          {activePage === 'dashboard'        && <DashboardPage />}
+          {activePage === 'transparency'     && <TransparencyPage />}
+          {activePage === 'contact'          && <ContactPage />}
+          {activePage === 'about'            && <AboutPage />}
+          {activePage === 'login'            && <LoginPage onLoginSuccess={handleLoginSuccess} />}
+          {activePage === 'my-messages'      && <MyMessages />}
         </main>
         <footer className="border-t border-gray-200 py-4 text-center text-[11px] text-gray-500">
           © {new Date().getFullYear()} Knowledge Channel Foundation · For demo purposes only

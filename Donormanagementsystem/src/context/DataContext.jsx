@@ -19,6 +19,7 @@ export const DataProvider = ({ children }) => {
   const [commTemplates, setCommTemplates] = useState([]);
   const [commWorkflows, setCommWorkflows] = useState([]);
   const [commHistory, setCommHistory] = useState([]);
+  const [contactMessages, setContactMessages] = useState([]);  // ← NEW
 
   // -------------
   // DONORS
@@ -115,7 +116,7 @@ export const DataProvider = ({ children }) => {
   };
 
   // -------------
-  // EVENTS (uses FormData for image upload)
+  // EVENTS
   // -------------
   const fetchEvents = async () => {
     try {
@@ -135,7 +136,7 @@ export const DataProvider = ({ children }) => {
       });
       const res = await fetch(`${API_BASE}/events`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` }, // NO Content-Type — browser sets it with boundary
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       if (!res.ok) throw new Error(`Add event failed: ${res.status}`);
@@ -427,6 +428,39 @@ export const DataProvider = ({ children }) => {
     } catch (err) { console.error(err); }
   };
 
+  // -------------
+  // CONTACT MESSAGES  ← NEW
+  // -------------
+  const fetchContactMessages = async () => {
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/messages`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`Fetch messages failed: ${res.status}`);
+      setContactMessages(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const markMessageRead = async (id) => {
+    try {
+      const token = getToken();
+      await fetch(`${API_BASE}/messages/${id}/read`, {
+        method: "PATCH", headers: { Authorization: `Bearer ${token}` },
+      });
+      setContactMessages((prev) => prev.map((m) => m.id === id ? { ...m, status: "Read" } : m));
+    } catch (err) { console.error(err); }
+  };
+
+  const deleteContactMessage = async (id) => {
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/messages/${id}`, {
+        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Delete message failed: ${res.status}`);
+      setContactMessages((prev) => prev.filter((m) => m.id !== id));
+    } catch (err) { console.error(err); alert("Failed to delete message."); }
+  };
+
   // fetch all on login
   useEffect(() => {
     if (!token) return;
@@ -439,6 +473,7 @@ export const DataProvider = ({ children }) => {
     fetchCommTemplates();
     fetchCommWorkflows();
     fetchCommHistory();
+    fetchContactMessages();  // ← NEW
   }, [token]);
 
   // -------------
@@ -454,6 +489,7 @@ export const DataProvider = ({ children }) => {
     () => ({
       donors, campaigns, events, grants, causeMarketing, donations,
       commTemplates, commWorkflows, commHistory,
+      contactMessages,  // ← NEW
 
       fetchDonors, addDonor, updateDonor, deleteDonor,
       fetchCampaigns, addCampaign, updateCampaign, deleteCampaign,
@@ -465,10 +501,12 @@ export const DataProvider = ({ children }) => {
       fetchCommTemplates, addCommTemplate, updateCommTemplate, deleteCommTemplate,
       fetchCommWorkflows, updateCommWorkflow,
       fetchCommHistory,
+      fetchContactMessages, markMessageRead, deleteContactMessage,  // ← NEW
 
       getDonorTotal, getCampaignRaised,
     }),
-    [donors, campaigns, events, grants, causeMarketing, donations, commTemplates, commWorkflows, commHistory]
+    [donors, campaigns, events, grants, causeMarketing, donations,
+     commTemplates, commWorkflows, commHistory, contactMessages]  // ← contactMessages added
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

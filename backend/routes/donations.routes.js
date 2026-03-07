@@ -15,11 +15,25 @@ const mapDonation = (row) => ({
   date: row.date ? new Date(row.date).toISOString().split("T")[0] : null,
 });
 
-// helper — fetch user's name from DB using their userId in the JWT
 async function getUserName(userId) {
   const [rows] = await pool.query("SELECT name FROM users WHERE id = ?", [userId]);
   return rows.length ? rows[0].name : null;
 }
+
+// ─── GET public campaign stats — no auth required ─────────────────────────────
+router.get("/public/stats", async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT campaign, SUM(amount) as raised, COUNT(*) as count
+       FROM donations WHERE status = 'Completed'
+       GROUP BY campaign`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 // ─── GET all — admin only ─────────────────────────────────────────────────────
 router.get("/", requireAuth, requireAdmin, async (req, res) => {
@@ -64,9 +78,25 @@ router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
 // ─── POST (user portal donation) — public, login optional ────────────────────
 router.post("/", async (req, res) => {
   try {
-    const { amount, type, campaign, channel, notes } = req.body;
+    const { amount, type, campaign, campaignId, channel, notes } = req.body;
 
-    // if a Bearer token is present, try to get the real user's name
+    // Resolve campaign name from ID if provided — guarantees exact title match
+    let campaignName = campaign;
+    if (campaignId) {
+      const [campRows] = await pool.query(
+        "SELECT title FROM campaigns WHERE id = ?",
+        [campaignId]
+      );
+      if (campRows.length) {
+        campaignName = campRows[0].title;
+      }
+    }
+
+    if (!amount || !campaignName) {
+      return res.status(400).json({ message: "amount and campaign are required" });
+    }
+
+    // Resolve donor name from JWT if present
     let donor = "Anonymous";
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -80,10 +110,6 @@ router.post("/", async (req, res) => {
       }
     }
 
-    if (!amount || !campaign) {
-      return res.status(400).json({ message: "amount and campaign are required" });
-    }
-
     const date = new Date().toISOString().split("T")[0];
 
     const [result] = await pool.query(
@@ -93,7 +119,7 @@ router.post("/", async (req, res) => {
         donor,
         Number(amount),
         type || "One-time",
-        campaign,
+        campaignName,
         channel || "Online",
         "Completed",
         notes || "",

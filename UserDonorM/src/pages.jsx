@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react'
+
 import {
   Search, Heart, BarChart3, Bell, LayoutGrid, User,
   Megaphone, Mail, Menu, LogOut,
 } from 'lucide-react'
 import logo from './assets/image-removebg-preview.png'
 import { useData } from './context/DataContext'
+import { MessageSquare } from 'lucide-react'
+import React, { useEffect, useState, useRef } from 'react'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
@@ -19,52 +21,14 @@ const LOGGED_OUT_NAV = [
 ]
 
 const LOGGED_IN_NAV = [
-  { id: 'home', label: 'Home', icon: LayoutGrid },
-  { id: 'campaigns', label: 'Campaigns', icon: Megaphone },
-  { id: 'dashboard', label: 'My Dashboard', icon: BarChart3 },
-  { id: 'donate', label: 'Donate', icon: Heart },
-  { id: 'about', label: 'About Us', icon: User },
-  { id: 'contact', label: 'Contact', icon: Mail },
-  { id: 'logout', label: 'Logout', icon: LogOut },
-]
-
-export const CAMPAIGNS = [
-  {
-    id: 'school-supplies',
-    title: 'School Supplies for Learners',
-    category: 'Education',
-    status: 'Active',
-    raised: 70000,
-    goal: 100000,
-    endDate: '2025-12-31',
-    image: 'https://images.pexels.com/photos/5905496/pexels-photo-5905496.jpeg?auto=compress&cs=tinysrgb&w=800',
-    shortDescription: 'Provide notebooks, pens, and learning kits to students in remote areas.',
-    fullDescription: 'This campaign focuses on delivering essential school supplies to learners in underserved communities. Your contribution helps ensure that no child is left behind because of a lack of basic educational materials.',
-  },
-  {
-    id: 'teacher-training',
-    title: 'Teacher Training Program',
-    category: 'Teacher Support',
-    status: 'Active',
-    raised: 60000,
-    goal: 80000,
-    endDate: '2025-09-30',
-    image: 'https://images.pexels.com/photos/5645279/pexels-photo-5645279.jpeg?auto=compress&cs=tinysrgb&w=800',
-    shortDescription: 'Equip teachers with modern teaching strategies and digital tools.',
-    fullDescription: 'Teachers are at the heart of learning. This program offers training, workshops, and resources to help educators deliver engaging and effective lessons, both in-person and online.',
-  },
-  {
-    id: 'educational-tv',
-    title: 'Educational TV Access',
-    category: 'Media',
-    status: 'Completed',
-    raised: 100000,
-    goal: 100000,
-    endDate: '2024-12-31',
-    image: 'https://images.pexels.com/photos/8219489/pexels-photo-8219489.jpeg?auto=compress&cs=tinysrgb&w=800',
-    shortDescription: 'Support the broadcast of curriculum-aligned content to more households.',
-    fullDescription: 'This initiative expands the reach of educational television content so more students can learn from home, especially in areas with limited internet access.',
-  },
+  { id: 'home',        label: 'Home',         icon: LayoutGrid },
+  { id: 'campaigns',   label: 'Campaigns',    icon: Megaphone },
+  { id: 'dashboard',   label: 'My Dashboard', icon: BarChart3 },
+  { id: 'donate',      label: 'Donate',       icon: Heart },
+  { id: 'my-messages', label: 'My Messages',  icon: MessageSquare }, // 👈 ADD THIS
+  { id: 'about',       label: 'About Us',     icon: User },
+  { id: 'contact',     label: 'Contact',      icon: Mail },
+  { id: 'logout',      label: 'Logout',       icon: LogOut },
 ]
 
 const TESTIMONIALS = [
@@ -206,6 +170,11 @@ export function HeaderBar({ userName, onToggleSidebar }) {
 // ─── PAGE COMPONENTS ─────────────────────────────────────────────────────────
 
 export function HeroSection({ onDonate, onViewCampaigns }) {
+  const { campaigns, getCampaignRaised } = useData()
+  const featured = campaigns.find(c => c.status === 'Active') || campaigns[0]
+  const featuredRaised = featured ? getCampaignRaised(featured.title) : 0
+  const featuredPercent = featured?.target ? Math.min(Math.round((featuredRaised / featured.target) * 100), 100) : 0
+
   return (
     <section className="pt-10 pb-12 grid gap-8 md:grid-cols-2 items-center">
       <div>
@@ -223,49 +192,62 @@ export function HeroSection({ onDonate, onViewCampaigns }) {
       <div className="relative h-56 md:h-64 rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-6 flex flex-col justify-between">
         <div>
           <p className="text-xs uppercase tracking-wide text-blue-100 mb-2">Featured campaign</p>
-          <p className="text-lg font-semibold">School Supplies for Learners</p>
-          <p className="mt-2 text-xs text-blue-100 max-w-xs">Your gifts provide essential learning kits so students can continue their education wherever they are.</p>
+          <p className="text-lg font-semibold">{featured?.title || 'Loading...'}</p>
+          <p className="mt-2 text-xs text-blue-100 max-w-xs">{featured?.description || ''}</p>
         </div>
-        <div>
-          <div className="flex items-center justify-between text-xs mb-1">
-            <span>₱70,000 raised</span><span>70% of goal</span>
+        {featured && (
+          <div>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span>{formatCurrency(featuredRaised)} raised</span>
+              <span>{featuredPercent}% of goal</span>
+            </div>
+            <div className="w-full h-2 bg-blue-900/40 rounded-full overflow-hidden">
+              <div className="h-2 bg-amber-300 rounded-full" style={{ width: `${featuredPercent}%` }} />
+            </div>
+            <p className="mt-2 text-[11px] text-blue-100">{daysLeft(featured.endDate)}</p>
           </div>
-          <div className="w-full h-2 bg-blue-900/40 rounded-full overflow-hidden">
-            <div className="h-2 w-[70%] bg-amber-300 rounded-full" />
-          </div>
-          <p className="mt-2 text-[11px] text-blue-100">30 days left</p>
-        </div>
+        )}
       </div>
     </section>
   )
 }
 
-export function HomeFeaturedCampaigns({ onDonate }) {
+export function HomeFeaturedCampaigns({ onDonate, onViewCampaigns }) {
+  const { campaigns, getCampaignRaised } = useData()
+  const featured = campaigns.filter(c => c.status === 'Active').slice(0, 3)
+
   return (
     <section className="py-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-900">Featured Campaigns</h2>
-        <button type="button" className="text-xs text-blue-600 hover:underline">View all</button>
+        <button type="button" onClick={onViewCampaigns} className="text-xs text-blue-600 hover:underline">View all</button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {CAMPAIGNS.slice(0, 3).map((campaign) => {
-          const percent = Math.round((campaign.raised / campaign.goal) * 100)
+        {featured.length === 0 && (
+          <p className="text-xs text-gray-500 col-span-3 text-center py-8">No active campaigns yet.</p>
+        )}
+        {featured.map((campaign) => {
+          const raised = getCampaignRaised(campaign.title)
+          const percent = campaign.target ? Math.min(Math.round((raised / campaign.target) * 100), 100) : 0
           return (
             <div key={campaign.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex flex-col transform transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
               <div className="h-28 bg-gray-100 overflow-hidden">
-                <img src={campaign.image} alt={campaign.title} className="w-full h-full object-cover" />
+                {campaign.image
+                  ? <img src={campaign.image} alt={campaign.title} className="w-full h-full object-cover" />
+                  : <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-200 flex items-center justify-center text-blue-400 text-xs">No image</div>
+                }
               </div>
               <div className="p-4 flex-1 flex flex-col gap-2">
                 <p className="text-xs text-blue-600 font-medium">{campaign.category}</p>
                 <p className="text-sm font-semibold text-gray-900">{campaign.title}</p>
-                <p className="text-xs text-gray-500 line-clamp-2">{campaign.shortDescription}</p>
+                <p className="text-xs text-gray-500 line-clamp-2">{campaign.description}</p>
                 <div className="mt-1">
                   <div className="flex justify-between text-[11px] text-gray-500 mb-1">
-                    <span>{formatCurrency(campaign.raised)} raised</span>
-                    <span>{formatCurrency(campaign.goal)} goal</span>
+                    <span>{formatCurrency(raised)} raised</span>
+                    <span>{formatCurrency(campaign.target)} goal</span>
                   </div>
                   <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${Math.min(percent, 100)}%` }} />
+                    <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${percent}%` }} />
                   </div>
                   <div className="flex justify-between items-center mt-1 text-[11px] text-gray-500">
                     <span>{percent}% funded</span><span>{daysLeft(campaign.endDate)}</span>
@@ -284,12 +266,9 @@ export function HomeFeaturedCampaigns({ onDonate }) {
 }
 
 export function ImpactStats() {
-  // ✅ Pull live data from DataContext instead of hardcoded values
-  const { donations, donors, campaigns } = useData()
-  const totalFunds = donations
-    .filter(d => d.status === 'Completed')
-    .reduce((sum, d) => sum + Number(d.amount || 0), 0)
-  const totalDonors = donors.length || donations.length
+  const { donors, donorCount, campaigns, publicStats } = useData()
+  const totalFunds = publicStats.reduce((sum, s) => sum + Number(s.raised || 0), 0)
+  const totalDonors = donors.length > 0 ? donors.length : donorCount
   const activeCampaigns = campaigns.filter(c => c.status === 'Active').length
 
   const funds = useAnimatedCounter(totalFunds, 900)
@@ -357,7 +336,6 @@ export function TestimonialsSection() {
 }
 
 export function DonorHistorySection() {
-  // ✅ Pull live donations from DataContext — backend shape: { donor, campaign, amount, date, id }
   const { donations } = useData()
   const recent = [...donations].slice(0, 5)
   const total = donations.reduce((sum, d) => sum + Number(d.amount || 0), 0)
@@ -387,7 +365,6 @@ export function DonorHistorySection() {
                 )}
                 {recent.map((d) => (
                   <tr key={d.id}>
-                    {/* ✅ Use backend field names: donor, campaign, amount, date */}
                     <td className="px-4 py-2 whitespace-nowrap text-gray-700">{d.donor}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-gray-700">{d.campaign}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-right text-gray-900 font-semibold">{formatCurrency(d.amount)}</td>
@@ -425,37 +402,41 @@ export function AboutKnowledgeChannelSection() {
 }
 
 export function HomePage({ onDonate, onViewCampaigns }) {
-  // ✅ No longer needs donations or stats props — components pull from DataContext directly
+  const { isAuthenticated } = useData()
   return (
     <div className="w-full pb-10">
       <HeroSection onDonate={onDonate} onViewCampaigns={onViewCampaigns} />
-      <HomeFeaturedCampaigns onDonate={onDonate} />
+      <HomeFeaturedCampaigns onDonate={onDonate} onViewCampaigns={onViewCampaigns} />
       <ImpactStats />
       <WhyDonateSection />
       <TestimonialsSection />
-      <DonorHistorySection />
+      {isAuthenticated && <DonorHistorySection />}
       <AboutKnowledgeChannelSection />
     </div>
   )
 }
 
 export function CampaignsPage({ onViewDetails, onDonate }) {
+  const { campaigns, getCampaignRaised } = useData()
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [status, setStatus] = useState('All')
   const [sort, setSort] = useState('Most Funded')
-  const categories = ['All', ...new Set(CAMPAIGNS.map((c) => c.category))]
-  const filtered = CAMPAIGNS.filter((c) => {
-    const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase()) || c.shortDescription.toLowerCase().includes(search.toLowerCase())
+
+  const categories = ['All', ...new Set(campaigns.map((c) => c.category).filter(Boolean))]
+
+  const filtered = campaigns.filter((c) => {
+    const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase()) || c.description.toLowerCase().includes(search.toLowerCase())
     const matchesCategory = category === 'All' || c.category === category
     const matchesStatus = status === 'All' || c.status === status
     return matchesSearch && matchesCategory && matchesStatus
   }).sort((a, b) => {
-    if (sort === 'Most Funded') return b.raised - a.raised
+    if (sort === 'Most Funded') return getCampaignRaised(b.title) - getCampaignRaised(a.title)
     if (sort === 'Newest') return new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
     if (sort === 'Ending Soon') return new Date(a.endDate).getTime() - new Date(b.endDate).getTime()
     return 0
   })
+
   return (
     <div className="w-full py-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
@@ -478,7 +459,10 @@ export function CampaignsPage({ onViewDetails, onDonate }) {
         <div>
           <label className="block text-[11px] text-gray-500 mb-1">Status</label>
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full border border-gray-300 rounded-full px-3 py-1.5 bg-white">
-            <option value="All">All</option><option value="Active">Active</option><option value="Completed">Completed</option>
+            <option value="All">All</option>
+            <option value="Active">Active</option>
+            <option value="Completed">Completed</option>
+            <option value="Paused">Paused</option>
           </select>
         </div>
         <div className="md:col-span-2">
@@ -489,23 +473,31 @@ export function CampaignsPage({ onViewDetails, onDonate }) {
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {campaigns.length === 0 && (
+          <p className="text-xs text-gray-500 col-span-3 text-center py-8">No campaigns found.</p>
+        )}
         {filtered.map((campaign) => {
-          const percent = Math.round((campaign.raised / campaign.goal) * 100)
+          const raised = getCampaignRaised(campaign.title)
+          const percent = campaign.target ? Math.min(Math.round((raised / campaign.target) * 100), 100) : 0
           return (
             <div key={campaign.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
               <div className="h-28 bg-gray-100 overflow-hidden">
-                <img src={campaign.image} alt={campaign.title} className="w-full h-full object-cover" />
+                {campaign.image
+                  ? <img src={campaign.image} alt={campaign.title} className="w-full h-full object-cover" />
+                  : <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-200 flex items-center justify-center text-blue-400 text-xs">No image</div>
+                }
               </div>
               <div className="p-4 flex-1 flex flex-col gap-2">
                 <p className="text-xs text-blue-600 font-medium">{campaign.category}</p>
                 <p className="text-sm font-semibold text-gray-900">{campaign.title}</p>
-                <p className="text-xs text-gray-500 line-clamp-2">{campaign.shortDescription}</p>
+                <p className="text-xs text-gray-500 line-clamp-2">{campaign.description}</p>
                 <div>
                   <div className="flex justify-between text-[11px] text-gray-500 mb-1">
-                    <span>{formatCurrency(campaign.raised)} raised</span><span>{formatCurrency(campaign.goal)} goal</span>
+                    <span>{formatCurrency(raised)} raised</span>
+                    <span>{formatCurrency(campaign.target)} goal</span>
                   </div>
                   <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${Math.min(percent, 100)}%` }} />
+                    <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${percent}%` }} />
                   </div>
                   <div className="flex justify-between items-center mt-1 text-[11px] text-gray-500">
                     <span>{percent}% funded</span><span>{daysLeft(campaign.endDate)}</span>
@@ -524,28 +516,38 @@ export function CampaignsPage({ onViewDetails, onDonate }) {
   )
 }
 
-export function CampaignDetailsPage({ campaign, recentDonations, onDonate }) {
+export function CampaignDetailsPage({ campaign, onDonate }) {
+  const { donations, getCampaignRaised } = useData()
   if (!campaign) return null
-  const percent = Math.round((campaign.raised / campaign.goal) * 100)
+
+  const raised = getCampaignRaised(campaign.title)
+  const percent = campaign.target ? Math.min(Math.round((raised / campaign.target) * 100), 100) : 0
+  const recentDonations = donations.filter((d) => d.campaign === campaign.title).slice(0, 5)
+
   const updates = [
     { id: 1, date: 'Jan 5, 2025', text: 'Distributed first batch of learning kits to 150 students.' },
     { id: 2, date: 'Dec 10, 2024', text: 'Campaign reached 50% of its funding goal.' },
   ]
+
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
       <div>
         <div className="h-48 md:h-56 rounded-2xl overflow-hidden mb-6 bg-gray-100">
-          <img src={campaign.image} alt={campaign.title} className="w-full h-full object-cover" />
+          {campaign.image
+            ? <img src={campaign.image} alt={campaign.title} className="w-full h-full object-cover" />
+            : <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-200 flex items-center justify-center text-blue-400">No image</div>
+          }
         </div>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">{campaign.title}</h1>
         <p className="text-xs text-blue-600 font-medium mb-4">{campaign.category}</p>
-        <p className="text-sm text-gray-600 mb-4">{campaign.fullDescription}</p>
+        <p className="text-sm text-gray-600 mb-4">{campaign.description}</p>
         <div className="mb-6">
           <div className="flex justify-between text-xs text-gray-500 mb-1">
-            <span>{formatCurrency(campaign.raised)} raised</span><span>{formatCurrency(campaign.goal)} goal</span>
+            <span>{formatCurrency(raised)} raised</span>
+            <span>{formatCurrency(campaign.target)} goal</span>
           </div>
           <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${Math.min(percent, 100)}%` }} />
+            <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${percent}%` }} />
           </div>
           <div className="flex justify-between text-[11px] text-gray-500 mt-1">
             <span>{percent}% funded</span><span>{daysLeft(campaign.endDate)}</span>
@@ -556,9 +558,9 @@ export function CampaignDetailsPage({ campaign, recentDonations, onDonate }) {
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm divide-y divide-gray-100 text-sm">
             {recentDonations.length === 0 && <div className="px-4 py-4 text-xs text-gray-500">No donations yet. Be the first to give.</div>}
             {recentDonations.map((d) => (
-              <div key={d.reference} className="px-4 py-3 flex justify-between">
+              <div key={d.id} className="px-4 py-3 flex justify-between">
                 <div>
-                  <p className="text-xs text-gray-700">{d.anonymous ? 'Anonymous donor' : d.name}</p>
+                  <p className="text-xs text-gray-700">{d.donor}</p>
                   <p className="text-[11px] text-gray-500">{d.date}</p>
                 </div>
                 <div className="text-right">
@@ -605,7 +607,8 @@ export function CampaignDetailsPage({ campaign, recentDonations, onDonate }) {
   )
 }
 
-export function DonationPage({ campaigns, selectedCampaignId, onSubmit, onBackToCampaign }) {
+export function DonationPage({ selectedCampaignId, onSubmit, onBackToCampaign }) {
+  const { campaigns, getCampaignRaised } = useData()
   const [campaignId, setCampaignId] = useState(selectedCampaignId || '')
   const [amount, setAmount] = useState('')
   const [type, setType] = useState('One-time')
@@ -617,18 +620,30 @@ export function DonationPage({ campaigns, selectedCampaignId, onSubmit, onBackTo
   const [message, setMessage] = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
   const quickAmounts = [500, 1000, 5000]
-  const currentCampaign = campaigns.find((c) => c.id === campaignId) || campaigns.find((c) => c.id === selectedCampaignId) || campaigns[0]
+
+  const currentCampaign = campaigns.find((c) => c.id === campaignId) ||
+    campaigns.find((c) => c.id === selectedCampaignId) ||
+    campaigns[0]
 
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!campaignId || !amount || !name || !email || !termsAccepted) return
     const chosenCampaign = campaigns.find((c) => c.id === campaignId)
     onSubmit({
-      campaignId, campaignTitle: chosenCampaign?.title || '',
+      campaignId,
+      campaignTitle: chosenCampaign?.title || '',
       amount: Number(amount), type, method, name, email, phone, anonymous, message,
-      reference: `KC-${Date.now()}`, date: new Date().toLocaleDateString(),
+      reference: `KC-${Date.now()}`,
+      date: new Date().toLocaleDateString(),
     })
   }
+
+  if (!currentCampaign) return <div className="py-8 text-center text-gray-500 text-sm">Loading campaigns...</div>
+
+  const currentRaised = getCampaignRaised(currentCampaign.title)
+  const currentPercent = currentCampaign.target
+    ? Math.min(Math.round((currentRaised / currentCampaign.target) * 100), 100)
+    : 0
 
   return (
     <div className="py-6 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
@@ -708,10 +723,11 @@ export function DonationPage({ campaigns, selectedCampaignId, onSubmit, onBackTo
           <p className="text-[11px] text-blue-600 mb-3">{currentCampaign.category}</p>
           <div className="mb-2">
             <div className="flex justify-between text-[11px] text-gray-500 mb-1">
-              <span>{formatCurrency(currentCampaign.raised)} raised</span><span>{formatCurrency(currentCampaign.goal)} goal</span>
+              <span>{formatCurrency(currentRaised)} raised</span>
+              <span>{formatCurrency(currentCampaign.target)} goal</span>
             </div>
             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${Math.min(Math.round((currentCampaign.raised / currentCampaign.goal) * 100), 100)}%` }} />
+              <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${currentPercent}%` }} />
             </div>
             <p className="mt-1 text-[11px] text-gray-500">{daysLeft(currentCampaign.endDate)}</p>
           </div>
@@ -753,7 +769,6 @@ export function ThankYouPage({ donation, onBackHome, onViewCampaign }) {
 }
 
 export function DashboardPage() {
-  // ✅ Pull live donations from DataContext — no more stale local prop
   const { donations, user } = useData()
   const totalDonated = donations.reduce((sum, d) => sum + Number(d.amount || 0), 0)
   const recurring = donations.filter((d) => d.type === 'Recurring').length
@@ -775,12 +790,10 @@ export function DashboardPage() {
           </div>
         ))}
       </div>
-
-      {/* Donor Insights */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)] gap-4 mb-6">
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-900">Donor history</p>
+            <p className="text-sm font-semibold text-gray-900">Donation history</p>
             <span className="text-[11px] text-gray-500">{donations.length} donation{donations.length !== 1 ? 's' : ''}</span>
           </div>
           <div className="overflow-x-auto">
@@ -809,7 +822,6 @@ export function DashboardPage() {
             </table>
           </div>
         </div>
-
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 text-xs">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Donor insights</h3>
           <dl className="space-y-3">
@@ -824,20 +836,43 @@ export function DashboardPage() {
 }
 
 export function TransparencyPage() {
-  const totalFunds = CAMPAIGNS.reduce((sum, c) => sum + c.raised, 0)
-  const completed = CAMPAIGNS.filter((c) => c.status === 'Completed')
+  const { campaigns, publicStats } = useData()
+
+  const getCampaignRaised = (title) => {
+    const stat = publicStats.find((s) => s.campaign === title)
+    return stat ? Number(stat.raised) : 0
+  }
+
+  const totalFunds = publicStats.reduce((sum, s) => sum + Number(s.raised || 0), 0)
+  const totalDonationCount = publicStats.reduce((sum, s) => sum + Number(s.count || 0), 0)
+  const completed = campaigns.filter((c) => c.status === 'Completed')
+
   return (
     <div className="py-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-4">Transparency</h1>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"><p className="text-[11px] text-gray-500 mb-1">Total funds raised</p><p className="text-lg font-bold text-gray-900">{formatCurrency(totalFunds)}</p></div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"><p className="text-[11px] text-gray-500 mb-1">Completed campaigns</p><p className="text-lg font-bold text-gray-900">{completed.length}</p></div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"><p className="text-[11px] text-gray-500 mb-1">Impact metrics</p><p className="text-xs text-gray-600">Learners reached, schools supported, hours of content aired.</p></div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <p className="text-[11px] text-gray-500 mb-1">Total funds raised</p>
+          <p className="text-lg font-bold text-gray-900">{formatCurrency(totalFunds)}</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <p className="text-[11px] text-gray-500 mb-1">Completed campaigns</p>
+          <p className="text-lg font-bold text-gray-900">{completed.length}</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+          <p className="text-[11px] text-gray-500 mb-1">Total donations received</p>
+          <p className="text-lg font-bold text-gray-900">{totalDonationCount}</p>
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <p className="text-sm font-semibold text-gray-900 mb-2">Fund allocation</p>
-          <ul className="text-xs text-gray-600 space-y-1"><li>70% Program implementation</li><li>15% Content development</li><li>10% Monitoring and evaluation</li><li>5% Administration</li></ul>
+          <ul className="text-xs text-gray-600 space-y-1">
+            <li>70% Program implementation</li>
+            <li>15% Content development</li>
+            <li>10% Monitoring and evaluation</li>
+            <li>5% Administration</li>
+          </ul>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
           <p className="text-sm font-semibold text-gray-900 mb-2">Annual report</p>
@@ -846,14 +881,85 @@ export function TransparencyPage() {
         </div>
       </div>
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
-        <p className="text-sm font-semibold text-gray-900 mb-2">Completed campaigns</p>
-        <ul className="text-xs text-gray-600 space-y-1">{completed.map((c) => <li key={c.id}>{c.title} – {formatCurrency(c.raised)} raised</li>)}</ul>
+        <p className="text-sm font-semibold text-gray-900 mb-3">Campaign breakdown</p>
+        <table className="min-w-full text-xs divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-2 text-left font-medium text-gray-500">Campaign</th>
+              <th className="px-4 py-2 text-left font-medium text-gray-500">Status</th>
+              <th className="px-4 py-2 text-right font-medium text-gray-500">Target</th>
+              <th className="px-4 py-2 text-right font-medium text-gray-500">Raised</th>
+              <th className="px-4 py-2 text-right font-medium text-gray-500">Progress</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {campaigns.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-4 text-center text-gray-500">No campaigns yet.</td></tr>
+            )}
+            {campaigns.map((c) => {
+              const raised = getCampaignRaised(c.title)
+              const target = Number(c.target || 0)
+              const percent = target ? Math.min(Math.round((raised / target) * 100), 100) : 0
+              return (
+                <tr key={c.id}>
+                  <td className="px-4 py-2 text-gray-700">{c.title}</td>
+                  <td className="px-4 py-2">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                      c.status === 'Active' ? 'bg-green-100 text-green-700' :
+                      c.status === 'Completed' ? 'bg-blue-100 text-blue-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>{c.status}</span>
+                  </td>
+                  <td className="px-4 py-2 text-right text-gray-500">{formatCurrency(target)}</td>
+                  <td className="px-4 py-2 text-right font-semibold text-gray-900">{formatCurrency(raised)}</td>
+                  <td className="px-4 py-2 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-blue-500 rounded-full" style={{ width: `${percent}%` }} />
+                      </div>
+                      <span className="text-gray-500 w-8 text-right">{percent}%</span>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   )
 }
 
 export function ContactPage() {
+  const { token, user } = useData()
+  const [subject, setSubject] = useState('')
+  const [message, setMessage] = useState('')
+  const [name, setName] = useState(user?.name || '')
+  const [email, setEmail] = useState(user?.email || '')
+  const [status, setStatus] = useState(null) // 'sending' | 'success' | 'error'
+
+  const handleSubmit = async () => {
+    if (!name || !email || !message) return
+    setStatus('sending')
+    try {
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
+      const res = await fetch('http://localhost:5001/api/messages', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name, email, subject, message }),
+      })
+      if (!res.ok) throw new Error()
+      setStatus('success')
+      setSubject('')
+      setMessage('')
+      if (!user) { setName(''); setEmail('') }
+    } catch {
+      setStatus('error')
+    }
+  }
+
   return (
     <div className="py-8 grid gap-6 md:grid-cols-2">
       <div>
@@ -865,23 +971,48 @@ export function ContactPage() {
           <p>Office: <span className="font-semibold">Ortigas Center, Pasig City, Philippines</span></p>
         </div>
       </div>
-      <form className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3 text-xs">
-        {['Name', 'Email', 'Subject'].map((field) => (
-          <div key={field}>
-            <label className="block text-[11px] text-gray-500 mb-1">{field}</label>
-            <input type={field === 'Email' ? 'email' : 'text'} className="w-full border border-gray-300 rounded-full px-3 py-1.5 bg-gray-50" />
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3 text-xs">
+        {!user && (
+          <>
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-1">Name</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full border border-gray-300 rounded-full px-3 py-1.5 bg-gray-50" />
+            </div>
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-1">Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full border border-gray-300 rounded-full px-3 py-1.5 bg-gray-50" />
+            </div>
+          </>
+        )}
+        {user && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg text-[11px] text-blue-700">
+            <span className="font-semibold">{user.name}</span>
+            <span className="text-blue-400">·</span>
+            <span>{user.email}</span>
           </div>
-        ))}
+        )}
+        <div>
+          <label className="block text-[11px] text-gray-500 mb-1">Subject</label>
+          <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full border border-gray-300 rounded-full px-3 py-1.5 bg-gray-50" />
+        </div>
         <div>
           <label className="block text-[11px] text-gray-500 mb-1">Message</label>
-          <textarea rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-50" />
+          <textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-50" />
         </div>
-        <button type="button" className="w-full inline-flex items-center justify-center rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Send message</button>
-      </form>
+        {status === 'success' && <p className="text-green-600 text-[11px] text-center">Message sent successfully!</p>}
+        {status === 'error' && <p className="text-red-600 text-[11px] text-center">Something went wrong. Please try again.</p>}
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={status === 'sending'}
+          className="w-full inline-flex items-center justify-center rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {status === 'sending' ? 'Sending...' : 'Send message'}
+        </button>
+      </div>
     </div>
   )
 }
-
 export function AboutPage() {
   return (
     <div className="py-8">

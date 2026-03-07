@@ -1,17 +1,27 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, HeartHandshake, Megaphone, BarChart3, LogOut, Mail, User } from 'lucide-react';
+import { LayoutDashboard, Users, HeartHandshake, Megaphone, BarChart3, LogOut, Mail, User, MessageSquare } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import logo from '../../assets/image-removebg-preview.png';
-import { useData } from '../../context/DataContext'; // adjust path if needed
+import { useData } from '../../context/DataContext';
 
-const navigation = [
+const adminNavigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Donors', href: '/donors', icon: Users },
   { name: 'Donations', href: '/donations', icon: HeartHandshake },
   { name: 'Projects', href: '/campaigns', icon: Megaphone },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
   { name: 'Communications', href: '/communications', icon: Mail },
+];
+
+const userNavigation = [
+  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Donors', href: '/donors', icon: Users },
+  { name: 'Donations', href: '/donations', icon: HeartHandshake },
+  { name: 'Projects', href: '/campaigns', icon: Megaphone },
+  { name: 'Reports', href: '/reports', icon: BarChart3 },
+  { name: 'Communications', href: '/communications', icon: Mail },
+  { name: 'My Messages', href: '/my-messages', icon: MessageSquare },
 ];
 
 export function Sidebar() {
@@ -22,6 +32,9 @@ export function Sidebar() {
     await logout();
     navigate('/login');
   };
+
+  const isAdmin = user?.role === 'admin';
+  const navigation = isAdmin ? adminNavigation : userNavigation;
 
   return (
     <div className="flex flex-col w-64 bg-white border-r border-gray-200 h-screen sticky top-0">
@@ -82,7 +95,6 @@ export function Sidebar() {
             </button>
           </>
         ) : (
-          /* Login button when not authenticated */
           <button
             onClick={() => navigate('/login')}
             className="flex items-center w-full px-3 py-2 text-sm font-medium text-blue-600 rounded-md bg-blue-50 hover:bg-blue-100"

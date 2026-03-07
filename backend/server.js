@@ -15,6 +15,7 @@ const donationsRoutes = require('./routes/donations.routes');
 const communicationsRoutes = require('./routes/communications.routes');
 const userRoutes = require('./routes/user.routes');
 const publicRoutes = require('./routes/public.routes');
+const messagesRoutes = require('./routes/messages.routes')
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/api/donations', donationsRoutes);
 app.use('/api/communications', communicationsRoutes);
 app.use('/api/users', userRoutes);
 app.use('/public', publicRoutes);
+app.use('/api/messages', messagesRoutes)
 
 app.get('/', (req, res) => {
   res.send('Backend is running ✅');

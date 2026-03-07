@@ -17,6 +17,8 @@ export function DataProvider({ children }) {
   const [donors, setDonors] = useState([]);
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [donations, setDonations] = useState([]);
+  const [publicStats, setPublicStats] = useState([]);
+  const [donorCount, setDonorCount] = useState(0);
 
   // ─── AUTH STATE ───────────────────────────────────────────────────────────
   const [user, setUser] = useState(() => {
@@ -27,8 +29,57 @@ export function DataProvider({ children }) {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
+  // ─── FETCH PUBLIC STATS (no auth needed) ─────────────────────────────────
+  const fetchPublicStats = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/donations/public/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        setPublicStats(data);
+        // Total donor count = sum of all donation counts across campaigns
+        const total = data.reduce((sum, s) => sum + Number(s.count || 0), 0);
+        setDonorCount(total);
+      }
+    } catch (err) {
+      console.error('Failed to fetch public stats:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPublicStats();
+  }, [fetchPublicStats]);
+
+  // ─── FETCH CAMPAIGNS FROM BACKEND ─────────────────────────────────────────
+  const fetchCampaigns = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/campaigns`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.length > 0) setCampaigns(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch campaigns:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCampaigns();
+  }, [fetchCampaigns]);
+
+  // ─── FETCH DONORS FROM BACKEND (admin only) ───────────────────────────────
+  const fetchDonors = useCallback(async (currentToken, currentUser) => {
+    if (!currentToken || !currentUser || currentUser.role !== 'admin') return;
+    try {
+      const res = await fetch(`${API_URL}/api/donors`, {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      });
+      if (res.ok) setDonors(await res.json());
+    } catch (err) {
+      console.error('Failed to fetch donors:', err);
+    }
+  }, []);
+
   // ─── FETCH DONATIONS ──────────────────────────────────────────────────────
-  // Extracted as a standalone function so it can be called after addDonation too
   const fetchDonations = useCallback(async (currentToken, currentUser) => {
     if (!currentToken || !currentUser) {
       setDonations([]);
@@ -47,10 +98,10 @@ export function DataProvider({ children }) {
     }
   }, []);
 
-  // Initial fetch on login
   useEffect(() => {
     fetchDonations(token, user);
-  }, [token, user, fetchDonations]);
+    fetchDonors(token, user);
+  }, [token, user, fetchDonations, fetchDonors]);
 
   const value = useMemo(() => {
 
@@ -113,12 +164,15 @@ export function DataProvider({ children }) {
       localStorage.removeItem('user');
       setToken(null);
       setUser(null);
+      setDonations([]);
+      setDonors([]);
     };
 
     // ─── DONORS ─────────────────────────────────────────────────────────────
 
     const getDonorTotal = (name) =>
-      donations.filter((d) => d.donor === name && typeof d.amount === 'number')
+      donations
+        .filter((d) => d.donor === name && typeof d.amount === 'number')
         .reduce((sum, d) => sum + d.amount, 0);
 
     const addDonor = (donor) =>
@@ -132,18 +186,55 @@ export function DataProvider({ children }) {
 
     // ─── CAMPAIGNS ──────────────────────────────────────────────────────────
 
-    const getCampaignRaised = (title) =>
-      donations.filter((d) => d.campaign === title && d.status === 'Completed' && typeof d.amount === 'number')
-        .reduce((sum, d) => sum + d.amount, 0);
+    // Always uses publicStats — works for both guests and logged-in users
+    const getCampaignRaised = (title) => {
+      const stat = publicStats.find((s) => s.campaign === title);
+      return stat ? Number(stat.raised) : 0;
+    };
 
-    const addCampaign = (campaign) =>
-      setCampaigns((prev) => [{ ...campaign, id: campaign.id ?? nextId(prev) }, ...prev]);
+    const addCampaign = async (campaign) => {
+      try {
+        const res = await fetch(`${API_URL}/api/campaigns`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(campaign),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setCampaigns((prev) => [data, ...prev]);
+          return data;
+        }
+      } catch (err) {
+        console.error('Add campaign error:', err);
+      }
+      return null;
+    };
 
-    const updateCampaign = (updated) =>
-      setCampaigns((prev) => prev.map((c) => c.id === updated.id ? { ...c, ...updated } : c));
+    const updateCampaign = async (updated) => {
+      try {
+        const res = await fetch(`${API_URL}/api/campaigns/${updated.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(updated),
+        });
+        const data = await res.json();
+        if (res.ok) setCampaigns((prev) => prev.map((c) => c.id === updated.id ? data : c));
+      } catch (err) {
+        console.error('Update campaign error:', err);
+      }
+    };
 
-    const deleteCampaign = (id) =>
-      setCampaigns((prev) => prev.filter((c) => c.id !== id));
+    const deleteCampaign = async (id) => {
+      try {
+        const res = await fetch(`${API_URL}/api/campaigns/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) setCampaigns((prev) => prev.filter((c) => c.id !== id));
+      } catch (err) {
+        console.error('Delete campaign error:', err);
+      }
+    };
 
     // ─── DONATIONS ──────────────────────────────────────────────────────────
 
@@ -160,8 +251,10 @@ export function DataProvider({ children }) {
         const data = await res.json();
 
         if (res.ok) {
-          // ✅ Re-fetch so My Dashboard shows the new donation immediately
+          // Refresh personal donations for dashboard
           await fetchDonations(token, user);
+          // Refresh public stats so home + transparency pages update immediately
+          await fetchPublicStats();
         }
 
         return res.ok ? data : null;
@@ -179,7 +272,10 @@ export function DataProvider({ children }) {
           body: JSON.stringify(updated),
         });
         const data = await res.json();
-        if (res.ok) setDonations((prev) => prev.map((d) => (d.id === updated.id ? data : d)));
+        if (res.ok) {
+          setDonations((prev) => prev.map((d) => (d.id === updated.id ? data : d)));
+          await fetchPublicStats();
+        }
       } catch (err) {
         console.error('Update donation error:', err);
       }
@@ -191,7 +287,10 @@ export function DataProvider({ children }) {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.ok) setDonations((prev) => prev.filter((d) => d.id !== id));
+        if (res.ok) {
+          setDonations((prev) => prev.filter((d) => d.id !== id));
+          await fetchPublicStats();
+        }
       } catch (err) {
         console.error('Delete donation error:', err);
       }
@@ -209,6 +308,7 @@ export function DataProvider({ children }) {
       logout,
       // donors
       donors,
+      donorCount,
       getDonorTotal,
       addDonor,
       updateDonor,
@@ -216,16 +316,18 @@ export function DataProvider({ children }) {
       // campaigns
       campaigns,
       getCampaignRaised,
+      fetchCampaigns,
       addCampaign,
       updateCampaign,
       deleteCampaign,
       // donations
       donations,
+      publicStats,
       addDonation,
       updateDonation,
       deleteDonation,
     };
-  }, [user, token, authError, authLoading, donors, campaigns, donations, fetchDonations]);
+  }, [user, token, authError, authLoading, donors, donorCount, campaigns, donations, publicStats, fetchDonations, fetchDonors, fetchCampaigns, fetchPublicStats]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
