@@ -25,7 +25,7 @@ const mapCampaign = (row) => ({
   image: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&q=80&w=800',
 });
 
-// Public - no auth required
+
 router.get("/events", async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM events ORDER BY date ASC");

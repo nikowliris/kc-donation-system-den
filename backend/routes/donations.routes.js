@@ -20,7 +20,6 @@ async function getUserName(userId) {
   return rows.length ? rows[0].name : null;
 }
 
-// ─── GET public campaign stats — no auth required ─────────────────────────────
 router.get("/public/stats", async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -35,7 +34,7 @@ router.get("/public/stats", async (req, res) => {
   }
 });
 
-// ─── GET all — admin only ─────────────────────────────────────────────────────
+
 router.get("/", requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM donations ORDER BY date DESC");
@@ -46,7 +45,7 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ─── GET own donations — any logged in user ───────────────────────────────────
+
 router.get("/mine", requireAuth, async (req, res) => {
   try {
     const donorName = await getUserName(req.user.userId);
@@ -63,7 +62,7 @@ router.get("/mine", requireAuth, async (req, res) => {
   }
 });
 
-// ─── GET one — admin only ─────────────────────────────────────────────────────
+
 router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM donations WHERE id = ?", [req.params.id]);
@@ -75,12 +74,12 @@ router.get("/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ─── POST (user portal donation) — public, login optional ────────────────────
+
 router.post("/", async (req, res) => {
   try {
     const { amount, type, campaign, campaignId, channel, notes } = req.body;
 
-    // Resolve campaign name from ID if provided — guarantees exact title match
+   
     let campaignName = campaign;
     if (campaignId) {
       const [campRows] = await pool.query(
@@ -96,7 +95,7 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "amount and campaign are required" });
     }
 
-    // Resolve donor name from JWT if present
+   
     let donor = "Anonymous";
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -106,7 +105,7 @@ router.post("/", async (req, res) => {
         const name = await getUserName(payload.userId);
         if (name) donor = name;
       } catch (_) {
-        // invalid token — fall back to Anonymous
+        
       }
     }
 
@@ -135,7 +134,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// ─── POST (admin manual entry) — admin only ───────────────────────────────────
+
 router.post("/admin", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { donor, amount, type, campaign, channel, status, notes } = req.body;
@@ -169,7 +168,7 @@ router.post("/admin", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ─── PUT — admin only ─────────────────────────────────────────────────────────
+
 router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { donor, amount, type, campaign, channel, status, notes } = req.body;
@@ -200,7 +199,7 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ─── DELETE — admin only ──────────────────────────────────────────────────────
+
 router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const [result] = await pool.query("DELETE FROM donations WHERE id = ?", [req.params.id]);

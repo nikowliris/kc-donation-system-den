@@ -4,7 +4,7 @@ const pool = require('../config/db')
 const { requireAuth, requireAdmin } = require('../middleware/auth')
 const jwt = require('jsonwebtoken')
 
-// Optional auth middleware — attaches user if token present, but doesn't block if not
+
 function optionalAuth(req, res, next) {
   const header = req.headers.authorization || ''
   const token = header.startsWith('Bearer ') ? header.slice(7) : null
@@ -18,11 +18,11 @@ function optionalAuth(req, res, next) {
   next()
 }
 
-// POST /api/messages — works for both guests and logged-in users
+
 router.post('/', optionalAuth, async (req, res) => {
   const { subject, message } = req.body
 
-  // If logged in, pull name/email from token; otherwise require them in body
+  
   const user_id = req.user?.userId || null
   const name = req.user?.name || req.body.name
   const email = req.user?.email || req.body.email
@@ -43,12 +43,12 @@ router.post('/', optionalAuth, async (req, res) => {
   }
 })
 
-// GET /api/messages/mine — logged-in user sees their own messages + replies
+
 router.get('/mine', requireAuth, async (req, res) => {
   try {
     const [messages] = await pool.query(
       'SELECT * FROM messages WHERE user_id = ? ORDER BY created_at DESC',
-      [req.user.userId]  // ✅ FIXED
+      [req.user.userId] 
     )
     const messagesWithReplies = await Promise.all(
       messages.map(async (msg) => {
@@ -66,7 +66,7 @@ router.get('/mine', requireAuth, async (req, res) => {
   }
 })
 
-// GET /api/messages — admin sees all messages
+
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM messages ORDER BY created_at DESC')
@@ -76,7 +76,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
   }
 })
 
-// PATCH /api/messages/:id/read — mark as read, admin only
+
 router.patch('/:id/read', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('UPDATE messages SET status = ? WHERE id = ?', ['Read', req.params.id])
@@ -86,7 +86,7 @@ router.patch('/:id/read', requireAuth, requireAdmin, async (req, res) => {
   }
 })
 
-// POST /api/messages/:id/reply — admin saves a reply to DB
+
 router.post('/:id/reply', requireAuth, requireAdmin, async (req, res) => {
   const { replyBody } = req.body
   if (!replyBody) return res.status(400).json({ message: 'Reply body is required.' })
@@ -108,7 +108,7 @@ router.post('/:id/reply', requireAuth, requireAdmin, async (req, res) => {
   }
 })
 
-// GET /api/messages/:id/replies — get replies for a message, admin only
+
 router.get('/:id/replies', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -121,7 +121,7 @@ router.get('/:id/replies', requireAuth, requireAdmin, async (req, res) => {
   }
 })
 
-// DELETE /api/messages/:id — admin only
+
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM messages WHERE id = ?', [req.params.id])
@@ -130,7 +130,7 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ message: 'Server error' })
   }
 })
-// POST /api/messages/:id/user-reply — logged-in user replies to a thread
+
 router.post('/:id/user-reply', requireAuth, async (req, res) => {
   const { replyBody } = req.body
   if (!replyBody) return res.status(400).json({ message: 'Reply body is required.' })

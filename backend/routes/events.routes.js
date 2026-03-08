@@ -5,10 +5,10 @@ const multer = require("multer");
 const pool = require("../config/db");
 const { requireAuth } = require("../middleware/auth");
 
-// ── Multer setup ──────────────────────────────────────────────
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, "../uploads")); // backend/uploads/
+    cb(null, path.join(__dirname, "../uploads"));
   },
   filename: (req, file, cb) => {
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
@@ -18,7 +18,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 5 * 1024 * 1024 }, 
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|webp|gif/;
     const ok = allowed.test(path.extname(file.originalname).toLowerCase()) &&
@@ -27,7 +27,7 @@ const upload = multer({
   },
 });
 
-// ── Map row ───────────────────────────────────────────────────
+
 const mapEvent = (row) => ({
   id: row.id,
   title: row.title,
@@ -39,7 +39,7 @@ const mapEvent = (row) => ({
   image: row.image ? `/uploads/${row.image}` : null,
 });
 
-// ── GET all ───────────────────────────────────────────────────
+
 router.get("/", requireAuth, async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM events ORDER BY date DESC");
@@ -50,7 +50,7 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
-// ── POST create ───────────────────────────────────────────────
+
 router.post("/", requireAuth, upload.single("image"), async (req, res) => {
   try {
     const { title, description, date, time, goal, status } = req.body;
@@ -72,12 +72,12 @@ router.post("/", requireAuth, upload.single("image"), async (req, res) => {
   }
 });
 
-// ── PUT update ────────────────────────────────────────────────
+
 router.put("/:id", requireAuth, upload.single("image"), async (req, res) => {
   try {
     const { title, description, date, time, goal, status } = req.body;
 
-    // Keep existing image if no new file uploaded
+
     let imageFilename = undefined;
     if (req.file) {
       imageFilename = req.file.filename;
@@ -101,7 +101,7 @@ router.put("/:id", requireAuth, upload.single("image"), async (req, res) => {
   }
 });
 
-// ── DELETE ────────────────────────────────────────────────────
+
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const [result] = await pool.query("DELETE FROM events WHERE id=?", [req.params.id]);

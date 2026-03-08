@@ -12,7 +12,7 @@ const mapCampaign = (row) => ({
   status: row.status,
 });
 
-// ─── GET all — public ─────────────────────────────────────────────────────────
+
 router.get("/", async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM campaigns ORDER BY created_at DESC");
@@ -23,7 +23,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ─── GET one — public ─────────────────────────────────────────────────────────
+
 router.get("/:id", async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -38,7 +38,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ─── POST — auth required ─────────────────────────────────────────────────────
+
 router.post("/", requireAuth, async (req, res) => {
   try {
     const { title, description, target, endDate, status } = req.body;
@@ -67,7 +67,7 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-// ─── PUT — auth required ──────────────────────────────────────────────────────
+
 router.put("/:id", requireAuth, async (req, res) => {
   try {
     const { title, description, target, endDate, status } = req.body;
@@ -95,7 +95,7 @@ router.put("/:id", requireAuth, async (req, res) => {
   }
 });
 
-// ─── DELETE — auth required ───────────────────────────────────────────────────
+
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const [result] = await pool.query(
