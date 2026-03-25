@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, ChevronLeft, ChevronRight, Edit, Trash, Eye } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Edit, Trash, Eye, Clock } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card, CardContent } from '../components/ui/Card';
@@ -13,7 +13,7 @@ import { useLocation } from 'react-router-dom';
 const PAGE_SIZE = 10;
 
 export function Donors() {
-  const { donors, donations, addDonor, updateDonor, deleteDonor, getDonorTotal } = useData();
+  const { donors, addDonor, updateDonor, deleteDonor, saveDonorSnapshot, fetchDonorHistory } = useData();
   const location = useLocation();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -22,6 +22,9 @@ export function Donors() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [currentDonor, setCurrentDonor] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [profileTab, setProfileTab] = useState('details'); // 'details' | 'history'
+  const [donorHistory, setDonorHistory] = useState([]);
 
   const formatDate = (val) => {
     if (!val) return '-';
@@ -33,19 +36,11 @@ export function Donors() {
     return `${yyyy}-${mm}-${dd}`;
   };
 
-  useEffect(() => {
-    const openDonorId = location.state?.openDonorId;
-    if (!openDonorId) return;
-    const found = (donors || []).find((d) => String(d.id) === String(openDonorId));
-    if (found) {
-      setCurrentDonor(found);
-      setIsProfileOpen(true);
-    }
-  }, [location.state, donors]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, typeFilter]);
+  const formatDateTime = (iso) => {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    return d.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
+  };
 
   const normalizeStatus = (s) => {
     const v = String(s || '').trim().toLowerCase();
@@ -57,38 +52,125 @@ export function Donors() {
 
   const statusBadgeVariant = (status) => {
     const s = normalizeStatus(status);
-    if (s === 'Active') return 'success';
-    if (s === 'Completed') return 'success';
+    if (s === 'Active' || s === 'Completed') return 'success';
     return 'secondary';
   };
+
+  useEffect(() => {
+    const openDonorId = location.state?.openDonorId;
+    if (!openDonorId) return;
+    const found = (donors || []).find((d) => String(d.id) === String(openDonorId));
+    if (found) handleViewProfile(found);
+  }, [location.state, donors]);
+
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, typeFilter]);
 
   const filteredDonors = donors.filter((row) => {
     const s = searchTerm.toLowerCase();
     const matchesSearch =
+      (row.sponsor || '').toLowerCase().includes(s) ||
       (row.project || '').toLowerCase().includes(s) ||
       (row.description || '').toLowerCase().includes(s) ||
-      (row.sponsor || '').toLowerCase().includes(s) ||
-      String(row.deliveryDate || '').toLowerCase().includes(s) ||
-      String(row.dueDate || '').toLowerCase().includes(s) ||
-      String(row.units ?? '').toLowerCase().includes(s) ||
-      String(row.amount ?? '').toLowerCase().includes(s) ||
-      String(row.type || '').toLowerCase().includes(s) ||
-      String(row.status || '').toLowerCase().includes(s);
+      String(row.type || '').toLowerCase().includes(s);
     const matchesType = typeFilter === 'All' || row.type === typeFilter;
     return matchesSearch && matchesType;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredDonors.length / PAGE_SIZE));
-  const paginatedDonors = filteredDonors.slice(
+  const grouped = filteredDonors.reduce((acc, row) => {
+    const key = (row.sponsor || 'Unknown').trim();
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(row);
+    return acc;
+  }, {});
+
+  const sponsorNames = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
+  const totalPages = Math.max(1, Math.ceil(sponsorNames.length / PAGE_SIZE));
+  const paginatedSponsors = sponsorNames.slice(
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE
   );
 
-  const handleViewProfile = (donor) => { setCurrentDonor(donor); setIsProfileOpen(true); };
-  const handleAddDonor = () => { setCurrentDonor(null); setIsModalOpen(true); };
-  const handleEditDonor = (donor) => { setCurrentDonor(donor); setIsModalOpen(true); };
+  const toggleGroup = (name) =>
+    setCollapsedGroups((prev) => ({ ...prev, [name]: !prev[name] }));
+
+  // Opens the View Profile modal and fetches history
+  const handleViewProfile = async (donor) => {
+    setCurrentDonor(donor);
+    setProfileTab('details');
+    setDonorHistory([]);
+    setIsProfileOpen(true);
+    const history = await fetchDonorHistory(donor.id);
+    setDonorHistory(history);
+  };
+
+  const handleAddDonor = () => {
+    setCurrentDonor(null);
+    setIsModalOpen(true);
+  };
+
+  const handleEditDonor = (donor) => {
+    setCurrentDonor(donor);
+    setIsModalOpen(true);
+  };
+
   const handleDeleteDonor = (id) => {
     if (confirm('Are you sure you want to delete this record?')) deleteDonor(id);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const newDonor = {
+      id: currentDonor ? currentDonor.id : undefined,
+      project: formData.get('project'),
+      description: formData.get('description'),
+      units: Number(formData.get('units') || 0),
+      deliveryDate: formData.get('deliveryDate') || null,
+      dueDate: formData.get('dueDate') || null,
+      sponsor: formData.get('sponsor'),
+      amount: Number(formData.get('amount') || 0),
+      type: formData.get('type'),
+      status: normalizeStatus(formData.get('status')),
+      email: formData.get('email') || null,
+      contact: formData.get('contact') || null,
+      tranches: Number(formData.get('tranches') || 0),
+    };
+    if (currentDonor) {
+      const hasChanges = JSON.stringify({
+        project: currentDonor.project,
+        description: currentDonor.description,
+        units: currentDonor.units,
+        deliveryDate: currentDonor.deliveryDate,
+        dueDate: currentDonor.dueDate,
+        sponsor: currentDonor.sponsor,
+        amount: currentDonor.amount,
+        type: currentDonor.type,
+        status: currentDonor.status,
+        email: currentDonor.email,
+        contact: currentDonor.contact,
+        tranches: currentDonor.tranches,
+      }) !== JSON.stringify({
+        project: newDonor.project,
+        description: newDonor.description,
+        units: newDonor.units,
+        deliveryDate: newDonor.deliveryDate,
+        dueDate: newDonor.dueDate,
+        sponsor: newDonor.sponsor,
+        amount: newDonor.amount,
+        type: newDonor.type,
+        status: newDonor.status,
+        email: newDonor.email,
+        contact: newDonor.contact,
+        tranches: newDonor.tranches,
+      });
+      if (hasChanges) {
+        await saveDonorSnapshot(currentDonor.id, { ...currentDonor });
+      }
+      updateDonor(newDonor);
+    } else {
+      addDonor(newDonor);
+    }
+    setIsModalOpen(false);
   };
 
   const handleDownloadSummary = () => {
@@ -108,36 +190,12 @@ export function Donors() {
     doc.text(`Amount: ₱${Number(currentDonor.amount || 0).toLocaleString()}`, 20, 91);
     doc.setFontSize(11);
     doc.text('Project Description:', 20, 106);
-    const desc = String(currentDonor.description || '-');
-    const lines = doc.splitTextToSize(desc, 170);
+    const lines = doc.splitTextToSize(String(currentDonor.description || '-'), 170);
     doc.text(lines, 20, 114);
     const fileSafeName = String(currentDonor.project || currentDonor.sponsor || 'record')
       .toLowerCase().replace(/[^a-z0-9]+/g, '-');
     doc.save(`${fileSafeName}-record-summary.pdf`);
   };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const newDonor = {
-      id: currentDonor ? currentDonor.id : undefined,
-      project: formData.get('project'),
-      description: formData.get('description'),
-      units: Number(formData.get('units') || 0),
-      deliveryDate: formData.get('deliveryDate') || null,
-      dueDate: formData.get('dueDate') || null,
-      sponsor: formData.get('sponsor'),
-      amount: Number(formData.get('amount') || 0),
-      type: formData.get('type'),
-      status: normalizeStatus(formData.get('status')),
-      email: formData.get('email') || null,
-    };
-    if (currentDonor) { updateDonor(newDonor); } else { addDonor(newDonor); }
-    setIsModalOpen(false);
-  };
-
-  const startRecord = filteredDonors.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
-  const endRecord = Math.min(currentPage * PAGE_SIZE, filteredDonors.length);
 
   return (
     <div className="space-y-5 px-1">
@@ -160,7 +218,7 @@ export function Donors() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
               <Input
-                placeholder="Search project, sponsor, description..."
+                placeholder="Search sponsor, program, type..."
                 className="pl-9"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -172,119 +230,114 @@ export function Donors() {
                 onChange={(e) => setTypeFilter(e.target.value)}
                 options={[
                   { label: 'All Types', value: 'All' },
+                  { label: 'Government', value: 'Government' },
                   { label: 'Individual', value: 'Individual' },
                   { label: 'Corporate', value: 'Corporate' },
-                  { label: 'Organization', value: 'Organization' },
+                  { label: 'NGOs', value: 'NGOs' },
+                  { label: 'Grants', value: 'Grants' },
+                  { label: 'Others', value: 'Others' },
                 ]}
               />
             </div>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto rounded-lg border border-gray-100">
-            <table className="min-w-full divide-y divide-gray-100">
-              <thead className="bg-gray-50">
-                <tr>
-                  {[
-                    { label: 'Project', align: 'left' },
-                    { label: 'Description', align: 'left' },
-                    { label: 'Schools / PMLs', align: 'center' },
-                    { label: 'Delivery Date', align: 'left' },
-                    { label: 'Due Date', align: 'left' },
-                    { label: 'Sponsor', align: 'left' },
-                    { label: 'Amount', align: 'right' },
-                    { label: 'Type', align: 'left' },
-                    { label: 'Status', align: 'left' },
-                    { label: 'Actions', align: 'center' },
-                  ].map(({ label, align }) => (
-                    <th
-                      key={label}
-                      className={`px-4 py-3 text-${align} text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap`}
-                    >
-                      {label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
+          {/* Grouped Table */}
+          <div className="space-y-3">
+            {paginatedSponsors.length === 0 && (
+              <div className="py-12 text-center text-sm text-gray-400">No records found.</div>
+            )}
 
-              <tbody className="bg-white divide-y divide-gray-50">
-                {paginatedDonors.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="px-4 py-3.5 text-sm font-semibold text-gray-900 whitespace-nowrap max-w-[140px] truncate">
-                      {row.project}
-                    </td>
-                    <td className="px-4 py-3.5 text-sm text-gray-500 max-w-[180px]">
-                      <span className="line-clamp-2">{row.description}</span>
-                    </td>
-                    <td className="px-4 py-3.5 text-sm text-gray-500 text-center whitespace-nowrap">
-                      {row.units ?? '—'}
-                    </td>
-                    <td className="px-4 py-3.5 text-sm text-gray-500 whitespace-nowrap">
-                      {formatDate(row.deliveryDate)}
-                    </td>
-                    <td className="px-4 py-3.5 text-sm text-gray-500 whitespace-nowrap">
-                      {formatDate(row.dueDate)}
-                    </td>
-                    <td className="px-4 py-3.5 text-sm text-gray-900 max-w-[140px]">
-                      <span className="block truncate">{row.sponsor}</span>
-                    </td>
-                    <td className="px-4 py-3.5 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">
-                      ₱{Number(row.amount || 0).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                        {row.type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      <Badge variant={statusBadgeVariant(row.status)}>
-                        {normalizeStatus(row.status)}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={() => handleViewProfile(row)}
-                          className="p-1.5 rounded-md text-gray-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
-                          title="View"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleEditDonor(row)}
-                          className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                          title="Edit"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteDonor(row.id)}
-                          className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Delete"
-                        >
-                          <Trash className="h-4 w-4" />
-                        </button>
+            {paginatedSponsors.map((sponsorName) => {
+              const rows = grouped[sponsorName];
+              const isCollapsed = collapsedGroups[sponsorName];
+              const totalAmount = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+
+              return (
+                <div key={sponsorName} className="rounded-xl border border-gray-200 overflow-hidden">
+                  <button
+                    onClick={() => toggleGroup(sponsorName)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-8 w-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 text-sm font-bold shrink-0">
+                        {sponsorName.charAt(0).toUpperCase()}
                       </div>
-                    </td>
-                  </tr>
-                ))}
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-900 truncate">{sponsorName}</p>
+                        <p className="text-xs text-gray-500">
+                          {rows.length} record{rows.length !== 1 ? 's' : ''} · ₱{totalAmount.toLocaleString()} total
+                        </p>
+                      </div>
+                    </div>
+                    {isCollapsed
+                      ? <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+                      : <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" />
+                    }
+                  </button>
 
-                {paginatedDonors.length === 0 && (
-                  <tr>
-                    <td className="px-4 py-12 text-center text-sm text-gray-400" colSpan={10}>
-                      No records found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  {!isCollapsed && (
+                    <div className="divide-y divide-gray-100">
+                      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-4 py-2 bg-white border-b border-gray-100">
+                        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Program</span>
+                        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-right">Amount</span>
+                        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Status</span>
+                        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-center">Actions</span>
+                      </div>
+
+                      {rows.map((row) => (
+                        <div
+                          key={row.id}
+                          className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center px-4 py-3 hover:bg-gray-50/60 transition-colors"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{row.project || '—'}</p>
+                            {row.description && (
+                              <p className="text-xs text-gray-400 truncate mt-0.5">{row.description}</p>
+                            )}
+                          </div>
+                          <span className="text-sm font-bold text-gray-900 whitespace-nowrap text-right">
+                            ₱{Number(row.amount || 0).toLocaleString()}
+                          </span>
+                          <Badge variant={statusBadgeVariant(row.status)}>
+                            {normalizeStatus(row.status)}
+                          </Badge>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleViewProfile(row)}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
+                              title="View"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleEditDonor(row)}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                              title="Edit"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteDonor(row.id)}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              title="Delete"
+                            >
+                              <Trash className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Pagination */}
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
             <p className="text-sm text-gray-500">
-              Showing <span className="font-medium text-gray-700">{startRecord}–{endRecord}</span> of{' '}
-              <span className="font-medium text-gray-700">{filteredDonors.length}</span> records
+              Showing <span className="font-medium text-gray-700">{paginatedSponsors.length}</span> of{' '}
+              <span className="font-medium text-gray-700">{sponsorNames.length}</span> sponsors
             </p>
             <div className="flex items-center gap-1">
               <button
@@ -294,7 +347,6 @@ export function Donors() {
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
                 .reduce((acc, p, idx, arr) => {
@@ -319,7 +371,6 @@ export function Donors() {
                     </button>
                   )
                 )}
-
               <button
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
@@ -332,199 +383,260 @@ export function Donors() {
         </CardContent>
       </Card>
 
-      {/* Add/Edit Modal */}
+      {/* ── Add / Edit Modal (no history tab) ── */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={currentDonor ? 'Edit Record' : 'Add New Record'}
       >
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="flex flex-col" style={{ maxHeight: '70vh' }}>
+          <div className="overflow-y-auto pr-1 flex-1 space-y-5">
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 space-y-4">
 
-          {/* Section Card */}
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 space-y-4">
-
-            {/* Name of Sponsor */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Name of Sponsor
-              </label>
-              <Input
-                name="sponsor"
-                defaultValue={currentDonor?.sponsor}
-                placeholder="Enter sponsor name"
-                className="w-full"
-                required
-              />
-            </div>
-
-            {/* Contact + Email */}
-            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Contact Number
-                </label>
-                <Input
-                  name="contact"
-                  placeholder="e.g. 09123456789"
-                />
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Name of Sponsor</label>
+                <Input name="sponsor" defaultValue={currentDonor?.sponsor} placeholder="Enter sponsor name" className="w-full" required />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Contact Number</label>
+                  <Input name="contact" defaultValue={currentDonor?.contact} placeholder="e.g. 09123456789" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Email</label>
+                  <Input name="email" type="email" defaultValue={currentDonor?.email} placeholder="example@email.com" />
+                </div>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Email
-                </label>
-                <Input
-                  name="email"
-                  type="email"
-                  defaultValue={currentDonor?.email}
-                  placeholder="example@email.com"
-                />
-              </div>
-            </div>
-
-            {/* Program */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Program
-              </label>
-              <Select
-                name="project"
-                defaultValue={currentDonor?.project}
-                options={[
-                  { label: 'Video Production', value: 'Video Production' },
-                  { label: 'Knowledge Channel TV Package (KCTV)', value: 'KCTV' },
-                  { label: 'Knowledge Portable Media Library (KCPML)', value: 'KCPML' },
-                  { label: 'Teacher Training', value: 'Teacher Training' },
-                  { label: 'Others', value: 'Others' },
-                ]}
-              />
-            </div>
-
-            {/* Beneficiaries + Date */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Number of Beneficiaries
-                </label>
-                <Input
-                  name="units"
-                  type="number"
-                  defaultValue={currentDonor?.units}
-                  placeholder="Enter number"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Date of Payment
-                </label>
-                <Input
-                  name="deliveryDate"
-                  type="date"
-                  defaultValue={currentDonor?.deliveryDate}
-                />
-              </div>
-            </div>
-
-            {/* Tranches + Source */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Number of Tranches
-                </label>
-                <Input
-                  name="tranches"
-                  type="number"
-                  placeholder="Enter number"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Source of Funds
-                </label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Program</label>
                 <Select
-                  name="type"
-                  defaultValue={currentDonor?.type}
+                  name="project"
+                  defaultValue={currentDonor?.project}
                   options={[
-                    { label: 'Government', value: 'Government' },
-                    { label: 'Corporate', value: 'Corporate' },
-                    { label: 'Individual', value: 'Individual' },
-                    { label: 'NGOs', value: 'NGOs' },
-                    { label: 'Grants', value: 'Grants' },
+                    { label: 'Video Production', value: 'Video Production' },
+                    { label: 'Knowledge Channel TV Package (KCTV)', value: 'KCTV' },
+                    { label: 'Knowledge Portable Media Library (KCPML)', value: 'KCPML' },
+                    { label: 'Teacher Training', value: 'Teacher Training' },
                     { label: 'Others', value: 'Others' },
                   ]}
                 />
               </div>
-            </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Number of Beneficiaries</label>
+                  <Input name="units" type="number" defaultValue={currentDonor?.units} placeholder="Enter number" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Date of Payment</label>
+                  <Input name="deliveryDate" type="date" defaultValue={currentDonor?.deliveryDate} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Due Date</label>
+                  <Input name="dueDate" type="date" defaultValue={currentDonor?.dueDate} />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Amount (₱)</label>
+                  <Input name="amount" type="number" defaultValue={currentDonor?.amount} placeholder="0" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Number of Tranches</label>
+                  <Input name="tranches" type="number" defaultValue={currentDonor?.tranches} placeholder="Enter number" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source of Funds</label>
+                  <Select
+                    name="type"
+                    defaultValue={currentDonor?.type}
+                    options={[
+                      { label: 'Government', value: 'Government' },
+                      { label: 'Corporate', value: 'Corporate' },
+                      { label: 'Individual', value: 'Individual' },
+                      { label: 'NGOs', value: 'NGOs' },
+                      { label: 'Grants', value: 'Grants' },
+                      { label: 'Others', value: 'Others' },
+                    ]}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+                <Select
+                  name="status"
+                  defaultValue={currentDonor?.status || 'Active'}
+                  options={[
+                    { label: 'Active', value: 'Active' },
+                    { label: 'Completed', value: 'Completed' },
+                    { label: 'Inactive', value: 'Inactive' },
+                  ]}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Project Description</label>
+                <textarea
+                  name="description"
+                  defaultValue={currentDonor?.description}
+                  placeholder="Enter project description..."
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Buttons */}
-          <div className="flex justify-end gap-3">
-            <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)}>
-              Cancel
-            </Button>
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2 shrink-0">
+            <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)}>Cancel</Button>
             <Button type="submit">Save Record</Button>
           </div>
-
         </form>
       </Modal>
 
-      {/* Profile/Details Modal */}
+      {/* ── View Profile Modal (Details + History tabs) ── */}
       <Modal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} title="Record Details">
         {currentDonor && (
-          <div className="space-y-5">
+          <div className="flex flex-col" style={{ maxHeight: '80vh' }}>
+
             {/* Sponsor header */}
-            <div className="flex items-center gap-4 pb-1">
+            <div className="flex items-center gap-4 pb-3">
               <div className="h-14 w-14 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 text-xl font-bold shrink-0">
                 {(currentDonor.sponsor || '?').charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
                 <h3 className="text-lg font-bold text-gray-900 truncate">{currentDonor.sponsor}</h3>
                 <p className="text-sm text-gray-500 truncate">{currentDonor.project}</p>
-                {currentDonor.email && (
-                  <p className="text-xs text-gray-400 truncate">{currentDonor.email}</p>
+                {currentDonor.email && <p className="text-xs text-gray-400 truncate">{currentDonor.email}</p>}
+                {currentDonor.contact && <p className="text-xs text-gray-400 truncate">{currentDonor.contact}</p>}
+              </div>
+            </div>
+
+            {/* Tabs: Details | History */}
+            <div className="flex border-b border-gray-200 mb-4">
+              <button
+                onClick={() => setProfileTab('details')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  profileTab === 'details'
+                    ? 'border-primary-600 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Details
+              </button>
+              <button
+                onClick={() => setProfileTab('history')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                  profileTab === 'history'
+                    ? 'border-primary-600 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                History
+                {donorHistory.length > 0 && (
+                  <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-gray-200 text-[10px] font-bold text-gray-600">
+                    {donorHistory.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* ── Details Tab ── */}
+            {profileTab === 'details' && (
+              <div className="overflow-y-auto flex-1 space-y-3 pr-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3.5 bg-white rounded-xl border border-sky-200 shadow-sm">
+                    <p className="text-[10px] text-sky-600 uppercase font-semibold tracking-wide mb-1">Amount</p>
+                    <p className="text-xl font-bold text-sky-700">₱{Number(currentDonor.amount || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
+                    <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1">Status</p>
+                    <div className="mt-1">
+                      <Badge variant={statusBadgeVariant(currentDonor.status)}>
+                        {normalizeStatus(currentDonor.status)}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Type', value: currentDonor.type },
+                    { label: 'Schools / PMLs', value: currentDonor.units ?? '—' },
+                    { label: 'Payment Date', value: formatDate(currentDonor.deliveryDate) },
+                    { label: 'Due Date', value: formatDate(currentDonor.dueDate) },
+                    { label: 'Tranches', value: currentDonor.tranches ?? '—' },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
+                      <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1">{label}</p>
+                      <p className="text-sm font-semibold text-gray-900">{value}</p>
+                    </div>
+                  ))}
+                  <div className="col-span-2 p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
+                    <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1.5">Project Description</p>
+                    <p className="text-sm text-gray-700 leading-relaxed">{currentDonor.description ?? '—'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── History Tab ── */}
+            {profileTab === 'history' && (
+              <div className="overflow-y-auto flex-1 space-y-3 pr-1">
+                {donorHistory.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-gray-400">No history available.</div>
+                ) : (
+                  donorHistory.map((snap, idx) => (
+                    <div key={idx} className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+                      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
+                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                          Version {idx + 1}
+                        </span>
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatDateTime(snap.saved_at)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-px bg-gray-100">
+                        {[
+                          { label: 'Sponsor', value: snap.sponsor },
+                          { label: 'Program', value: snap.project },
+                          { label: 'Amount', value: snap.amount !== undefined ? `₱${Number(snap.amount).toLocaleString()}` : '—' },
+                          { label: 'Status', value: normalizeStatus(snap.status) },
+                          { label: 'Type', value: snap.type },
+                          { label: 'Beneficiaries', value: snap.units ?? '—' },
+                          { label: 'Payment Date', value: formatDate(snap.deliveryDate) },
+                          { label: 'Due Date', value: formatDate(snap.dueDate) },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="bg-white px-4 py-3">
+                            <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide mb-0.5">{label}</p>
+                            <p className="text-sm text-gray-800 font-medium">{value || '—'}</p>
+                          </div>
+                        ))}
+                        {snap.description && (
+                          <div className="col-span-2 bg-white px-4 py-3">
+                            <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide mb-0.5">Description</p>
+                            <p className="text-sm text-gray-700 leading-relaxed">{snap.description}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
-            </div>
+            )}
 
-            {/* Key metrics */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3.5 bg-sky-50 rounded-xl border border-sky-100">
-                <p className="text-[10px] text-sky-600 uppercase font-semibold tracking-wide mb-1">Amount</p>
-                <p className="text-xl font-bold text-sky-700">₱{Number(currentDonor.amount || 0).toLocaleString()}</p>
-              </div>
-              <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-100">
-                <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1">Status</p>
-                <p className="text-xl font-bold text-gray-900">{normalizeStatus(currentDonor.status)}</p>
-              </div>
-            </div>
-
-            {/* Detail grid */}
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Type', value: currentDonor.type },
-                { label: 'Schools / PMLs', value: currentDonor.units ?? '—' },
-                { label: 'Delivery Date', value: formatDate(currentDonor.deliveryDate) },
-                { label: 'Due Date', value: formatDate(currentDonor.dueDate) },
-              ].map(({ label, value }) => (
-                <div key={label} className="p-3.5 bg-gray-50 rounded-xl border border-gray-100">
-                  <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1">{label}</p>
-                  <p className="text-sm font-semibold text-gray-900">{value}</p>
-                </div>
-              ))}
-              <div className="col-span-2 p-3.5 bg-gray-50 rounded-xl border border-gray-100">
-                <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1.5">Project Description</p>
-                <p className="text-sm text-gray-700 leading-relaxed">{currentDonor.description ?? '—'}</p>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex justify-between items-center pt-3 border-t border-gray-100">
-              <Button variant="secondary" type="button" onClick={handleDownloadSummary}>
-                Download PDF
-              </Button>
+            {/* Footer */}
+            <div className="flex justify-between items-center pt-4 border-t border-gray-100 mt-4 shrink-0">
+              <Button variant="secondary" type="button" onClick={handleDownloadSummary}>Download PDF</Button>
               <Button type="button" onClick={() => setIsProfileOpen(false)}>Close</Button>
             </div>
           </div>

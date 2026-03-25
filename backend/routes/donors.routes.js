@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 
+// ── GET all donors ────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM donors ORDER BY id DESC');
@@ -12,6 +13,7 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ── POST create donor ─────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
   try {
     console.log('POST /api/donors body:', req.body);
@@ -21,61 +23,68 @@ router.post('/', async (req, res) => {
       description,
       units,
       deliveryDate,
-      dueDate, 
+      dueDate,
       sponsor,
       amount,
       type,
       status,
+      email,
+      contact,
+      tranches,
     } = req.body;
 
-    if (!project || !description || !sponsor || !type || !status) {
+    if (!sponsor || !type || !status) {
       return res.status(400).json({
         message: 'Missing required fields.',
-        received: { project, description, sponsor, type, status },
+        received: { sponsor, type, status },
       });
     }
 
     const sql = `
       INSERT INTO donors
-      (project, description, units, deliveryDate, dueDate, sponsor, amount, type, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (project, description, units, deliveryDate, dueDate, sponsor, amount, type, status, email, contact, tranches)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
-      project,
-      description,
-      Number(units || 0),
-      deliveryDate || null,
-      dueDate || null,
+      project       || null,
+      description   || null,
+      Number(units  || 0),
+      deliveryDate  || null,
+      dueDate       || null,
       sponsor,
       Number(amount || 0),
       type,
       status,
+      email         || null,
+      contact       || null,
+      Number(tranches || 0),
     ];
 
     const [result] = await db.query(sql, values);
 
     return res.status(201).json({
-      id: result.insertId,
-      project,
-      description,
-      units: Number(units || 0),
+      id:           result.insertId,
+      project:      project      || null,
+      description:  description  || null,
+      units:        Number(units || 0),
       deliveryDate: deliveryDate || null,
-      dueDate: dueDate || null, 
+      dueDate:      dueDate      || null,
       sponsor,
-      amount: Number(amount || 0),
+      amount:       Number(amount || 0),
       type,
       status,
+      email:        email        || null,
+      contact:      contact      || null,
+      tranches:     Number(tranches || 0),
     });
   } catch (err) {
     console.error('POST /api/donors error:', err);
-    return res.status(500).json({
-      message: 'Server error',
-      error: err.message,
-    });
+    return res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
+// ── PUT update donor ──────────────────────────────────────────────────────────
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -85,33 +94,55 @@ router.put('/:id', async (req, res) => {
       description,
       units,
       deliveryDate,
-      dueDate, 
+      dueDate,
       sponsor,
       amount,
       type,
       status,
+      email,
+      contact,
+      tranches,
     } = req.body;
 
     const sql = `
       UPDATE donors
-      SET project=?, description=?, units=?, deliveryDate=?, dueDate=?, sponsor=?, amount=?, type=?, status=?
-      WHERE id=?
+      SET
+        project      = ?,
+        description  = ?,
+        units        = ?,
+        deliveryDate = ?,
+        dueDate      = ?,
+        sponsor      = ?,
+        amount       = ?,
+        type         = ?,
+        status       = ?,
+        email        = ?,
+        contact      = ?,
+        tranches     = ?
+      WHERE id = ?
     `;
 
     const values = [
-      project,
-      description,
-      Number(units || 0),
-      deliveryDate || null,
-      dueDate || null,
+      project       || null,
+      description   || null,
+      Number(units  || 0),
+      deliveryDate  || null,
+      dueDate       || null,
       sponsor,
       Number(amount || 0),
       type,
       status,
+      email         || null,
+      contact       || null,
+      Number(tranches || 0),
       id,
     ];
 
-    await db.query(sql, values);
+    const [result] = await db.query(sql, values);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Donor not found' });
+    }
 
     res.json({ message: 'Updated successfully' });
   } catch (err) {
@@ -120,13 +151,65 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// ── DELETE donor ──────────────────────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await db.query('DELETE FROM donors WHERE id=?', [id]);
+    await db.query('DELETE FROM donors WHERE id = ?', [id]);
     res.json({ message: 'Deleted successfully' });
   } catch (err) {
     console.error('DELETE /donors/:id error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ── GET history for a donor ───────────────────────────────────────────────────
+router.get('/:id/history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await db.query(
+      'SELECT * FROM donor_history WHERE donor_id = ? ORDER BY saved_at DESC',
+      [id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('GET /donors/:id/history error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ── POST save a history snapshot ──────────────────────────────────────────────
+router.post('/:id/history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const snapshot = req.body; // full donor object before the edit
+
+    const sql = `
+      INSERT INTO donor_history
+        (donor_id, project, description, units, deliveryDate, dueDate, sponsor, amount, type, status, email, contact, tranches, saved_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    `;
+
+    const values = [
+      id,
+      snapshot.project      || null,
+      snapshot.description  || null,
+      Number(snapshot.units || 0),
+      snapshot.deliveryDate || null,
+      snapshot.dueDate      || null,
+      snapshot.sponsor      || null,
+      Number(snapshot.amount || 0),
+      snapshot.type         || null,
+      snapshot.status       || null,
+      snapshot.email        || null,
+      snapshot.contact      || null,
+      Number(snapshot.tranches || 0),
+    ];
+
+    const [result] = await db.query(sql, values);
+    res.status(201).json({ id: result.insertId, message: 'Snapshot saved' });
+  } catch (err) {
+    console.error('POST /donors/:id/history error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

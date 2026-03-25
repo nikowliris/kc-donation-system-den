@@ -19,7 +19,7 @@ export const DataProvider = ({ children }) => {
   const [commTemplates, setCommTemplates] = useState([]);
   const [commWorkflows, setCommWorkflows] = useState([]);
   const [commHistory, setCommHistory] = useState([]);
-  const [contactMessages, setContactMessages] = useState([]);  // ← NEW
+  const [contactMessages, setContactMessages] = useState([]);
 
   // -------------
   // DONORS
@@ -37,7 +37,8 @@ export const DataProvider = ({ children }) => {
     try {
       const token = getToken();
       const res = await fetch(`${API_BASE}/donors`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(donor),
       });
       if (!res.ok) throw new Error(`Add donor failed: ${res.status}`);
@@ -49,7 +50,8 @@ export const DataProvider = ({ children }) => {
     try {
       const token = getToken();
       const res = await fetch(`${API_BASE}/donors/${updatedDonor.id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(updatedDonor),
       });
       if (!res.ok) throw new Error(`Update donor failed: ${res.status}`);
@@ -66,6 +68,37 @@ export const DataProvider = ({ children }) => {
       if (!res.ok) throw new Error(`Delete donor failed: ${res.status}`);
       await fetchDonors();
     } catch (err) { console.error(err); alert("Failed to delete record."); }
+  };
+
+  // Save a snapshot of the donor BEFORE an edit (called from Donors.jsx)
+  const saveDonorSnapshot = async (donorId, snapshot) => {
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/donors/${donorId}/history`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(snapshot),
+      });
+      if (!res.ok) throw new Error(`Save snapshot failed: ${res.status}`);
+    } catch (err) {
+      // Non-fatal — log but don't block the save
+      console.error("saveDonorSnapshot error:", err);
+    }
+  };
+
+  // Fetch full edit history for a single donor
+  const fetchDonorHistory = async (donorId) => {
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/donors/${donorId}/history`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Fetch donor history failed: ${res.status}`);
+      return await res.json(); // returns array of snapshots
+    } catch (err) {
+      console.error("fetchDonorHistory error:", err);
+      return [];
+    }
   };
 
   // -------------
@@ -135,9 +168,7 @@ export const DataProvider = ({ children }) => {
         if (v !== undefined && v !== null && v !== "") formData.append(k, v);
       });
       const res = await fetch(`${API_BASE}/events`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+        method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData,
       });
       if (!res.ok) throw new Error(`Add event failed: ${res.status}`);
       await fetchEvents();
@@ -152,9 +183,7 @@ export const DataProvider = ({ children }) => {
         if (v !== undefined && v !== null && v !== "") formData.append(k, v);
       });
       const res = await fetch(`${API_BASE}/events/${payload.id}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+        method: "PUT", headers: { Authorization: `Bearer ${token}` }, body: formData,
       });
       if (!res.ok) throw new Error(`Update event failed: ${res.status}`);
       await fetchEvents();
@@ -429,7 +458,7 @@ export const DataProvider = ({ children }) => {
   };
 
   // -------------
-  // CONTACT MESSAGES  ← NEW
+  // CONTACT MESSAGES
   // -------------
   const fetchContactMessages = async () => {
     try {
@@ -473,25 +502,31 @@ export const DataProvider = ({ children }) => {
     fetchCommTemplates();
     fetchCommWorkflows();
     fetchCommHistory();
-    fetchContactMessages();  // ← NEW
+    fetchContactMessages();
   }, [token]);
 
   // -------------
   // Helpers
   // -------------
   const getDonorTotal = (donorName) =>
-    donations.filter((d) => d.donor === donorName && d.status === "Completed").reduce((sum, d) => sum + d.amount, 0);
+    donations
+      .filter((d) => d.donor === donorName && d.status === "Completed")
+      .reduce((sum, d) => sum + d.amount, 0);
 
   const getCampaignRaised = (campaignTitle) =>
-    donations.filter((d) => d.campaign === campaignTitle && d.status === "Completed").reduce((sum, d) => sum + d.amount, 0);
+    donations
+      .filter((d) => d.campaign === campaignTitle && d.status === "Completed")
+      .reduce((sum, d) => sum + d.amount, 0);
 
   const value = useMemo(
     () => ({
       donors, campaigns, events, grants, causeMarketing, donations,
       commTemplates, commWorkflows, commHistory,
-      contactMessages,  // ← NEW
+      contactMessages,
 
       fetchDonors, addDonor, updateDonor, deleteDonor,
+      saveDonorSnapshot, fetchDonorHistory,           // ← NEW
+
       fetchCampaigns, addCampaign, updateCampaign, deleteCampaign,
       fetchEvents, addEvent, updateEvent, deleteEvent,
       addCampaignEvent, updateCampaignEvent, deleteCampaignEvent,
@@ -501,12 +536,12 @@ export const DataProvider = ({ children }) => {
       fetchCommTemplates, addCommTemplate, updateCommTemplate, deleteCommTemplate,
       fetchCommWorkflows, updateCommWorkflow,
       fetchCommHistory,
-      fetchContactMessages, markMessageRead, deleteContactMessage,  // ← NEW
+      fetchContactMessages, markMessageRead, deleteContactMessage,
 
       getDonorTotal, getCampaignRaised,
     }),
     [donors, campaigns, events, grants, causeMarketing, donations,
-     commTemplates, commWorkflows, commHistory, contactMessages]  // ← contactMessages added
+     commTemplates, commWorkflows, commHistory, contactMessages]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

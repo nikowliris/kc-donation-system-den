@@ -66,7 +66,7 @@ export function Reports() {
 
   // ─── DONATION STATS ───────────────────────────────────────────────────────
   const donTotalRaised = completedDonations.reduce((s, d) => s + Number(d.amount || 0), 0);
-  const donAvg = completedDonations.length > 0 ? donTotalRaised / completedDonations.length : 0;
+  const donUniqueDonors = useMemo(() => new Set(filteredDonations.map((d) => d.donor).filter(Boolean)).size, [filteredDonations]);
   const donPending = filteredDonations.filter((d) => d.status === 'Pending').length;
 
   // ─── SPONSORSHIP STATS ────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ export function Reports() {
     sponsorships: filteredDonors.filter((d) => new Date(d.deliveryDate).getMonth() === i).reduce((s, d) => s + Number(d.amount || 0), 0),
   })), [completedDonations, filteredDonors]);
 
-  const byCampaignData = useMemo(() => {
+  const byProgramData = useMemo(() => {
     const map = new Map();
     completedDonations.forEach((d) => { const k = d.campaign || 'Unknown'; map.set(k, (map.get(k) || 0) + Number(d.amount || 0)); });
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]).map(([name, amount]) => ({ name: name.length > 18 ? name.substring(0, 18) + '...' : name, amount }));
@@ -191,11 +191,10 @@ export function Reports() {
           </Card>
 
           {/* Summary Stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             {[
               { label: 'Total Raised', value: `₱${donTotalRaised.toLocaleString()}`, color: 'text-green-600' },
-              { label: 'Total Donations', value: filteredDonations.length, color: 'text-blue-600' },
-              { label: 'Avg. Donation', value: `₱${Math.round(donAvg).toLocaleString()}`, color: 'text-purple-600' },
+              { label: 'Number of Donors', value: donUniqueDonors, color: 'text-blue-600' },
               { label: 'Pending', value: donPending, color: 'text-yellow-600' },
             ].map((s) => (
               <Card key={s.label}><CardContent className="p-4 text-center">
@@ -206,13 +205,13 @@ export function Reports() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* By Campaign */}
+            {/* By Program */}
             <Card>
-              <CardHeader><CardTitle>By Campaign</CardTitle></CardHeader>
+              <CardHeader><CardTitle>By Program</CardTitle></CardHeader>
               <CardContent>
                 <div className="h-72">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={byCampaignData} layout="vertical" margin={{ left: 20 }}>
+                    <BarChart data={byProgramData} layout="vertical" margin={{ left: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
                       <XAxis type="number" hide />
                       <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
@@ -221,7 +220,7 @@ export function Reports() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                {byCampaignData.length === 0 && <p className="text-center text-sm text-gray-500 mt-4">No data.</p>}
+                {byProgramData.length === 0 && <p className="text-center text-sm text-gray-500 mt-4">No data.</p>}
               </CardContent>
             </Card>
 

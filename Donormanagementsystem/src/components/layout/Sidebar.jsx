@@ -17,7 +17,6 @@ import { useAuth } from '../../context/AuthContext';
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Donors', href: '/donors', icon: Users },
-  { name: 'Donations', href: '/donations', icon: HeartHandshake },
   { name: 'Projects', href: '/campaigns', icon: Megaphone },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
   { name: 'Communications', href: '/communications', icon: Mail },
