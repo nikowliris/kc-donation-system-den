@@ -94,9 +94,25 @@ export const DataProvider = ({ children }) => {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`Fetch donor history failed: ${res.status}`);
-      return await res.json(); // returns array of snapshots
+      return await res.json();
     } catch (err) {
       console.error("fetchDonorHistory error:", err);
+      return [];
+    }
+  };
+
+  // Fetch all donors linked to a specific campaign
+  const fetchCampaignDonors = async (campaignId) => {
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/donors`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Fetch campaign donors failed: ${res.status}`);
+      const all = await res.json();
+      return all.filter((d) => String(d.campaign_id) === String(campaignId));
+    } catch (err) {
+      console.error("fetchCampaignDonors error:", err);
       return [];
     }
   };
@@ -518,6 +534,12 @@ export const DataProvider = ({ children }) => {
       .filter((d) => d.campaign === campaignTitle && d.status === "Completed")
       .reduce((sum, d) => sum + d.amount, 0);
 
+  // ── NEW: sum donor amounts linked to a campaign by campaign_id ──────────────
+  const getCampaignDonorTotal = (campaignId) =>
+    donors
+      .filter((d) => String(d.campaign_id) === String(campaignId))
+      .reduce((sum, d) => sum + Number(d.amount || 0), 0);
+
   const value = useMemo(
     () => ({
       donors, campaigns, events, grants, causeMarketing, donations,
@@ -525,7 +547,8 @@ export const DataProvider = ({ children }) => {
       contactMessages,
 
       fetchDonors, addDonor, updateDonor, deleteDonor,
-      saveDonorSnapshot, fetchDonorHistory,           // ← NEW
+      saveDonorSnapshot, fetchDonorHistory,
+      fetchCampaignDonors,
 
       fetchCampaigns, addCampaign, updateCampaign, deleteCampaign,
       fetchEvents, addEvent, updateEvent, deleteEvent,
@@ -539,6 +562,7 @@ export const DataProvider = ({ children }) => {
       fetchContactMessages, markMessageRead, deleteContactMessage,
 
       getDonorTotal, getCampaignRaised,
+      getCampaignDonorTotal,  // ← NEW
     }),
     [donors, campaigns, events, grants, causeMarketing, donations,
      commTemplates, commWorkflows, commHistory, contactMessages]

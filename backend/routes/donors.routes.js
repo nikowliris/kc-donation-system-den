@@ -2,10 +2,15 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 
-// ── GET all donors ────────────────────────────────────────────────────────────
+// ── GET all donors — join campaign title ──────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM donors ORDER BY id DESC');
+    const [rows] = await db.query(`
+      SELECT d.*, c.title AS campaign_title
+      FROM donors d
+      LEFT JOIN campaigns c ON c.id = d.campaign_id
+      ORDER BY d.id DESC
+    `);
     res.json(rows);
   } catch (err) {
     console.error('GET /donors error:', err);
@@ -31,6 +36,7 @@ router.post('/', async (req, res) => {
       email,
       contact,
       tranches,
+      campaign_id,
     } = req.body;
 
     if (!sponsor || !type || !status) {
@@ -42,8 +48,8 @@ router.post('/', async (req, res) => {
 
     const sql = `
       INSERT INTO donors
-        (project, description, units, deliveryDate, dueDate, sponsor, amount, type, status, email, contact, tranches)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (project, description, units, deliveryDate, dueDate, sponsor, amount, type, status, email, contact, tranches, campaign_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -59,6 +65,7 @@ router.post('/', async (req, res) => {
       email         || null,
       contact       || null,
       Number(tranches || 0),
+      campaign_id ? Number(campaign_id) : null,
     ];
 
     const [result] = await db.query(sql, values);
@@ -77,6 +84,7 @@ router.post('/', async (req, res) => {
       email:        email        || null,
       contact:      contact      || null,
       tranches:     Number(tranches || 0),
+      campaign_id:  campaign_id ? Number(campaign_id) : null,
     });
   } catch (err) {
     console.error('POST /api/donors error:', err);
@@ -102,6 +110,7 @@ router.put('/:id', async (req, res) => {
       email,
       contact,
       tranches,
+      campaign_id,
     } = req.body;
 
     const sql = `
@@ -118,7 +127,8 @@ router.put('/:id', async (req, res) => {
         status       = ?,
         email        = ?,
         contact      = ?,
-        tranches     = ?
+        tranches     = ?,
+        campaign_id  = ?
       WHERE id = ?
     `;
 
@@ -135,6 +145,7 @@ router.put('/:id', async (req, res) => {
       email         || null,
       contact       || null,
       Number(tranches || 0),
+      campaign_id ? Number(campaign_id) : null,
       id,
     ];
 
@@ -182,7 +193,7 @@ router.get('/:id/history', async (req, res) => {
 router.post('/:id/history', async (req, res) => {
   try {
     const { id } = req.params;
-    const snapshot = req.body; // full donor object before the edit
+    const snapshot = req.body;
 
     const sql = `
       INSERT INTO donor_history

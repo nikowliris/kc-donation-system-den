@@ -8,10 +8,12 @@ const mapCampaign = (row) => ({
   title: row.title,
   description: row.description,
   target: Number(row.target),
+  startDate: row.start_date || null,   // ← add this
   endDate: row.end_date,
   status: row.status,
+  sponsor: row.sponsor || null,         // ← add if column exists
+  department: row.department || null,   // ← add if column exists
 });
-
 
 router.get("/", async (req, res) => {
   try {

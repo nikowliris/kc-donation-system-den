@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Edit, Trash, Eye, Clock } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Edit, Trash, Eye, Clock, ExternalLink } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card, CardContent } from '../components/ui/Card';
@@ -8,13 +8,19 @@ import { Badge } from '../components/ui/Badge';
 import { Select } from '../components/ui/Select';
 import { useData } from '../context/DataContext';
 import jsPDF from 'jspdf';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const PAGE_SIZE = 10;
 
 export function Donors() {
-  const { donors, addDonor, updateDonor, deleteDonor, saveDonorSnapshot, fetchDonorHistory } = useData();
+  const {
+    donors, campaigns,
+    addDonor, updateDonor, deleteDonor,
+    saveDonorSnapshot, fetchDonorHistory,
+  } = useData();
+
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
@@ -23,9 +29,10 @@ export function Donors() {
   const [currentDonor, setCurrentDonor] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [collapsedGroups, setCollapsedGroups] = useState({});
-  const [profileTab, setProfileTab] = useState('details'); // 'details' | 'history'
+  const [profileTab, setProfileTab] = useState('details');
   const [donorHistory, setDonorHistory] = useState([]);
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
   const formatDate = (val) => {
     if (!val) return '-';
     const d = new Date(val);
@@ -56,6 +63,13 @@ export function Donors() {
     return 'secondary';
   };
 
+  // Find linked campaign object for a donor
+  const getLinkedCampaign = (donor) => {
+    if (!donor?.campaign_id) return null;
+    return (campaigns || []).find((c) => String(c.id) === String(donor.campaign_id)) || null;
+  };
+
+  // ── Effects ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const openDonorId = location.state?.openDonorId;
     if (!openDonorId) return;
@@ -65,13 +79,16 @@ export function Donors() {
 
   useEffect(() => { setCurrentPage(1); }, [searchTerm, typeFilter]);
 
+  // ── Filtering & grouping ───────────────────────────────────────────────────
   const filteredDonors = donors.filter((row) => {
     const s = searchTerm.toLowerCase();
+    const linkedCampaign = getLinkedCampaign(row);
     const matchesSearch =
       (row.sponsor || '').toLowerCase().includes(s) ||
       (row.project || '').toLowerCase().includes(s) ||
       (row.description || '').toLowerCase().includes(s) ||
-      String(row.type || '').toLowerCase().includes(s);
+      String(row.type || '').toLowerCase().includes(s) ||
+      (linkedCampaign?.title || '').toLowerCase().includes(s);
     const matchesType = typeFilter === 'All' || row.type === typeFilter;
     return matchesSearch && matchesType;
   });
@@ -93,7 +110,7 @@ export function Donors() {
   const toggleGroup = (name) =>
     setCollapsedGroups((prev) => ({ ...prev, [name]: !prev[name] }));
 
-  // Opens the View Profile modal and fetches history
+  // ── Actions ────────────────────────────────────────────────────────────────
   const handleViewProfile = async (donor) => {
     setCurrentDonor(donor);
     setProfileTab('details');
@@ -117,9 +134,16 @@ export function Donors() {
     if (confirm('Are you sure you want to delete this record?')) deleteDonor(id);
   };
 
+  // Navigate to the linked campaign's page
+  const handleGoToProject = (campaignId) => {
+    setIsProfileOpen(false);
+    navigate('/campaigns', { state: { openCampaignId: campaignId } });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
+    const rawCampaignId = formData.get('campaign_id');
     const newDonor = {
       id: currentDonor ? currentDonor.id : undefined,
       project: formData.get('project'),
@@ -134,36 +158,29 @@ export function Donors() {
       email: formData.get('email') || null,
       contact: formData.get('contact') || null,
       tranches: Number(formData.get('tranches') || 0),
+      campaign_id: rawCampaignId && rawCampaignId !== '' ? Number(rawCampaignId) : null,
     };
+
     if (currentDonor) {
-      const hasChanges = JSON.stringify({
-        project: currentDonor.project,
-        description: currentDonor.description,
-        units: currentDonor.units,
-        deliveryDate: currentDonor.deliveryDate,
-        dueDate: currentDonor.dueDate,
-        sponsor: currentDonor.sponsor,
-        amount: currentDonor.amount,
-        type: currentDonor.type,
-        status: currentDonor.status,
-        email: currentDonor.email,
-        contact: currentDonor.contact,
-        tranches: currentDonor.tranches,
-      }) !== JSON.stringify({
-        project: newDonor.project,
-        description: newDonor.description,
-        units: newDonor.units,
-        deliveryDate: newDonor.deliveryDate,
-        dueDate: newDonor.dueDate,
-        sponsor: newDonor.sponsor,
-        amount: newDonor.amount,
-        type: newDonor.type,
-        status: newDonor.status,
-        email: newDonor.email,
-        contact: newDonor.contact,
-        tranches: newDonor.tranches,
-      });
-      if (hasChanges) {
+      const prevFields = {
+        project: currentDonor.project, description: currentDonor.description,
+        units: currentDonor.units, deliveryDate: currentDonor.deliveryDate,
+        dueDate: currentDonor.dueDate, sponsor: currentDonor.sponsor,
+        amount: currentDonor.amount, type: currentDonor.type,
+        status: currentDonor.status, email: currentDonor.email,
+        contact: currentDonor.contact, tranches: currentDonor.tranches,
+        campaign_id: currentDonor.campaign_id,
+      };
+      const newFields = {
+        project: newDonor.project, description: newDonor.description,
+        units: newDonor.units, deliveryDate: newDonor.deliveryDate,
+        dueDate: newDonor.dueDate, sponsor: newDonor.sponsor,
+        amount: newDonor.amount, type: newDonor.type,
+        status: newDonor.status, email: newDonor.email,
+        contact: newDonor.contact, tranches: newDonor.tranches,
+        campaign_id: newDonor.campaign_id,
+      };
+      if (JSON.stringify(prevFields) !== JSON.stringify(newFields)) {
         await saveDonorSnapshot(currentDonor.id, { ...currentDonor });
       }
       updateDonor(newDonor);
@@ -175,6 +192,7 @@ export function Donors() {
 
   const handleDownloadSummary = () => {
     if (!currentDonor) return;
+    const linkedCampaign = getLinkedCampaign(currentDonor);
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.text('Sponsorship Record Summary', 105, 20, { align: 'center' });
@@ -186,6 +204,9 @@ export function Donors() {
     doc.text(`Units (Schools/PMLs): ${currentDonor.units ?? '-'}`, 20, 63);
     doc.text(`Delivery Date: ${formatDate(currentDonor.deliveryDate)}`, 20, 70);
     doc.text(`Due Date: ${formatDate(currentDonor.dueDate)}`, 20, 77);
+    if (linkedCampaign) {
+      doc.text(`Linked Campaign: ${linkedCampaign.title}`, 20, 84);
+    }
     doc.setFontSize(12);
     doc.text(`Amount: ₱${Number(currentDonor.amount || 0).toLocaleString()}`, 20, 91);
     doc.setFontSize(11);
@@ -197,6 +218,13 @@ export function Donors() {
     doc.save(`${fileSafeName}-record-summary.pdf`);
   };
 
+  // Campaign options for the form select
+  const campaignOptions = [
+    { label: '— No linked campaign —', value: '' },
+    ...(campaigns || []).map((c) => ({ label: c.title, value: String(c.id) })),
+  ];
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5 px-1">
       {/* Header */}
@@ -218,7 +246,7 @@ export function Donors() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
               <Input
-                placeholder="Search sponsor, program, type..."
+                placeholder="Search sponsor, program, campaign..."
                 className="pl-9"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -277,55 +305,76 @@ export function Donors() {
 
                   {!isCollapsed && (
                     <div className="divide-y divide-gray-100">
-                      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-4 py-2 bg-white border-b border-gray-100">
+                      <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-4 py-2 bg-white border-b border-gray-100">
                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Program</span>
+                        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Campaign</span>
                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-right">Amount</span>
                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Status</span>
                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-center">Actions</span>
                       </div>
 
-                      {rows.map((row) => (
-                        <div
-                          key={row.id}
-                          className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center px-4 py-3 hover:bg-gray-50/60 transition-colors"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{row.project || '—'}</p>
-                            {row.description && (
-                              <p className="text-xs text-gray-400 truncate mt-0.5">{row.description}</p>
-                            )}
+                      {rows.map((row) => {
+                        const linkedCampaign = getLinkedCampaign(row);
+                        return (
+                          <div
+                            key={row.id}
+                            className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-center px-4 py-3 hover:bg-gray-50/60 transition-colors"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">{row.project || '—'}</p>
+                              {row.description && (
+                                <p className="text-xs text-gray-400 truncate mt-0.5">{row.description}</p>
+                              )}
+                            </div>
+
+                            {/* Linked campaign pill */}
+                            <div className="shrink-0">
+                              {linkedCampaign ? (
+                                <button
+                                  onClick={() => handleGoToProject(linkedCampaign.id)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-xs font-medium hover:bg-violet-100 transition-colors max-w-[140px] truncate"
+                                  title={linkedCampaign.title}
+                                >
+                                  <ExternalLink className="h-3 w-3 shrink-0" />
+                                  <span className="truncate">{linkedCampaign.title}</span>
+                                </button>
+                              ) : (
+                                <span className="text-xs text-gray-300 italic">—</span>
+                              )}
+                            </div>
+
+                            <span className="text-sm font-bold text-gray-900 whitespace-nowrap text-right">
+                              ₱{Number(row.amount || 0).toLocaleString()}
+                            </span>
+                            <Badge variant={statusBadgeVariant(row.status)}>
+                              {normalizeStatus(row.status)}
+                            </Badge>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleViewProfile(row)}
+                                className="p-1.5 rounded-md text-gray-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
+                                title="View"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleEditDonor(row)}
+                                className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                                title="Edit"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDonor(row.id)}
+                                className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                title="Delete"
+                              >
+                                <Trash className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
-                          <span className="text-sm font-bold text-gray-900 whitespace-nowrap text-right">
-                            ₱{Number(row.amount || 0).toLocaleString()}
-                          </span>
-                          <Badge variant={statusBadgeVariant(row.status)}>
-                            {normalizeStatus(row.status)}
-                          </Badge>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleViewProfile(row)}
-                              className="p-1.5 rounded-md text-gray-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
-                              title="View"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleEditDonor(row)}
-                              className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                              title="Edit"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteDonor(row.id)}
-                              className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                              title="Delete"
-                            >
-                              <Trash className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -383,7 +432,7 @@ export function Donors() {
         </CardContent>
       </Card>
 
-      {/* ── Add / Edit Modal (no history tab) ── */}
+      {/* ── Add / Edit Modal ── */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -421,6 +470,19 @@ export function Donors() {
                     { label: 'Teacher Training', value: 'Teacher Training' },
                     { label: 'Others', value: 'Others' },
                   ]}
+                />
+              </div>
+
+              {/* ── Linked Campaign ── */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Linked Campaign
+                  <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
+                </label>
+                <Select
+                  name="campaign_id"
+                  defaultValue={currentDonor?.campaign_id ? String(currentDonor.campaign_id) : ''}
+                  options={campaignOptions}
                 />
               </div>
 
@@ -501,146 +563,190 @@ export function Donors() {
         </form>
       </Modal>
 
-      {/* ── View Profile Modal (Details + History tabs) ── */}
+      {/* ── View Profile Modal ── */}
       <Modal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} title="Record Details">
-        {currentDonor && (
-          <div className="flex flex-col" style={{ maxHeight: '80vh' }}>
+        {currentDonor && (() => {
+          const linkedCampaign = getLinkedCampaign(currentDonor);
+          return (
+            <div className="flex flex-col" style={{ maxHeight: '80vh' }}>
 
-            {/* Sponsor header */}
-            <div className="flex items-center gap-4 pb-3">
-              <div className="h-14 w-14 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 text-xl font-bold shrink-0">
-                {(currentDonor.sponsor || '?').charAt(0).toUpperCase()}
+              {/* Sponsor header */}
+              <div className="flex items-center gap-4 pb-3">
+                <div className="h-14 w-14 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 text-xl font-bold shrink-0">
+                  {(currentDonor.sponsor || '?').charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg font-bold text-gray-900 truncate">{currentDonor.sponsor}</h3>
+                  <p className="text-sm text-gray-500 truncate">{currentDonor.project}</p>
+                  {currentDonor.email && <p className="text-xs text-gray-400 truncate">{currentDonor.email}</p>}
+                  {currentDonor.contact && <p className="text-xs text-gray-400 truncate">{currentDonor.contact}</p>}
+
+                  {/* Linked campaign chip */}
+                  {linkedCampaign && (
+                    <button
+                      onClick={() => handleGoToProject(linkedCampaign.id)}
+                      className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold hover:bg-violet-100 transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3 shrink-0" />
+                      {linkedCampaign.title}
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="min-w-0">
-                <h3 className="text-lg font-bold text-gray-900 truncate">{currentDonor.sponsor}</h3>
-                <p className="text-sm text-gray-500 truncate">{currentDonor.project}</p>
-                {currentDonor.email && <p className="text-xs text-gray-400 truncate">{currentDonor.email}</p>}
-                {currentDonor.contact && <p className="text-xs text-gray-400 truncate">{currentDonor.contact}</p>}
+
+              {/* Tabs */}
+              <div className="flex border-b border-gray-200 mb-4">
+                <button
+                  onClick={() => setProfileTab('details')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    profileTab === 'details'
+                      ? 'border-primary-600 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Details
+                </button>
+                <button
+                  onClick={() => setProfileTab('history')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                    profileTab === 'history'
+                      ? 'border-primary-600 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  History
+                  {donorHistory.length > 0 && (
+                    <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-gray-200 text-[10px] font-bold text-gray-600">
+                      {donorHistory.length}
+                    </span>
+                  )}
+                </button>
               </div>
-            </div>
 
-            {/* Tabs: Details | History */}
-            <div className="flex border-b border-gray-200 mb-4">
-              <button
-                onClick={() => setProfileTab('details')}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  profileTab === 'details'
-                    ? 'border-primary-600 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Details
-              </button>
-              <button
-                onClick={() => setProfileTab('history')}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
-                  profileTab === 'history'
-                    ? 'border-primary-600 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Clock className="h-3.5 w-3.5" />
-                History
-                {donorHistory.length > 0 && (
-                  <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-gray-200 text-[10px] font-bold text-gray-600">
-                    {donorHistory.length}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {/* ── Details Tab ── */}
-            {profileTab === 'details' && (
-              <div className="overflow-y-auto flex-1 space-y-3 pr-1">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3.5 bg-white rounded-xl border border-sky-200 shadow-sm">
-                    <p className="text-[10px] text-sky-600 uppercase font-semibold tracking-wide mb-1">Amount</p>
-                    <p className="text-xl font-bold text-sky-700">₱{Number(currentDonor.amount || 0).toLocaleString()}</p>
+              {/* ── Details Tab ── */}
+              {profileTab === 'details' && (
+                <div className="overflow-y-auto flex-1 space-y-3 pr-1">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3.5 bg-white rounded-xl border border-sky-200 shadow-sm">
+                      <p className="text-[10px] text-sky-600 uppercase font-semibold tracking-wide mb-1">Amount</p>
+                      <p className="text-xl font-bold text-sky-700">₱{Number(currentDonor.amount || 0).toLocaleString()}</p>
+                    </div>
+                    <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
+                      <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1">Status</p>
+                      <div className="mt-1">
+                        <Badge variant={statusBadgeVariant(currentDonor.status)}>
+                          {normalizeStatus(currentDonor.status)}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                  <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
-                    <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1">Status</p>
-                    <div className="mt-1">
-                      <Badge variant={statusBadgeVariant(currentDonor.status)}>
-                        {normalizeStatus(currentDonor.status)}
-                      </Badge>
+
+                  {/* Linked campaign detail card */}
+                  {linkedCampaign && (
+                    <div className="p-3.5 bg-violet-50 rounded-xl border border-violet-200 shadow-sm">
+                      <p className="text-[10px] text-violet-600 uppercase font-semibold tracking-wide mb-2">Linked Campaign</p>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-violet-900 truncate">{linkedCampaign.title}</p>
+                          {linkedCampaign.description && (
+                            <p className="text-xs text-violet-700 mt-0.5 line-clamp-2">{linkedCampaign.description}</p>
+                          )}
+                          <div className="flex items-center gap-3 mt-1.5 text-xs text-violet-600">
+                            {linkedCampaign.target && (
+                              <span>Target: ₱{Number(linkedCampaign.target).toLocaleString()}</span>
+                            )}
+                            {linkedCampaign.status && (
+                              <span className="capitalize">{linkedCampaign.status}</span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleGoToProject(linkedCampaign.id)}
+                          className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition-colors"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: 'Type', value: currentDonor.type },
+                      { label: 'Schools / PMLs', value: currentDonor.units ?? '—' },
+                      { label: 'Payment Date', value: formatDate(currentDonor.deliveryDate) },
+                      { label: 'Due Date', value: formatDate(currentDonor.dueDate) },
+                      { label: 'Tranches', value: currentDonor.tranches ?? '—' },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
+                        <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1">{label}</p>
+                        <p className="text-sm font-semibold text-gray-900">{value}</p>
+                      </div>
+                    ))}
+                    <div className="col-span-2 p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
+                      <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1.5">Project Description</p>
+                      <p className="text-sm text-gray-700 leading-relaxed">{currentDonor.description ?? '—'}</p>
                     </div>
                   </div>
                 </div>
+              )}
 
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { label: 'Type', value: currentDonor.type },
-                    { label: 'Schools / PMLs', value: currentDonor.units ?? '—' },
-                    { label: 'Payment Date', value: formatDate(currentDonor.deliveryDate) },
-                    { label: 'Due Date', value: formatDate(currentDonor.dueDate) },
-                    { label: 'Tranches', value: currentDonor.tranches ?? '—' },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
-                      <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1">{label}</p>
-                      <p className="text-sm font-semibold text-gray-900">{value}</p>
-                    </div>
-                  ))}
-                  <div className="col-span-2 p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
-                    <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1.5">Project Description</p>
-                    <p className="text-sm text-gray-700 leading-relaxed">{currentDonor.description ?? '—'}</p>
-                  </div>
+              {/* ── History Tab ── */}
+              {profileTab === 'history' && (
+                <div className="overflow-y-auto flex-1 space-y-3 pr-1">
+                  {donorHistory.length === 0 ? (
+                    <div className="py-12 text-center text-sm text-gray-400">No history available.</div>
+                  ) : (
+                    donorHistory.map((snap, idx) => (
+                      <div key={idx} className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+                        <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                            Version {idx + 1}
+                          </span>
+                          <span className="text-xs text-gray-500 flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatDateTime(snap.saved_at)}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-px bg-gray-100">
+                          {[
+                            { label: 'Sponsor', value: snap.sponsor },
+                            { label: 'Program', value: snap.project },
+                            { label: 'Amount', value: snap.amount !== undefined ? `₱${Number(snap.amount).toLocaleString()}` : '—' },
+                            { label: 'Status', value: normalizeStatus(snap.status) },
+                            { label: 'Type', value: snap.type },
+                            { label: 'Beneficiaries', value: snap.units ?? '—' },
+                            { label: 'Payment Date', value: formatDate(snap.deliveryDate) },
+                            { label: 'Due Date', value: formatDate(snap.dueDate) },
+                          ].map(({ label, value }) => (
+                            <div key={label} className="bg-white px-4 py-3">
+                              <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide mb-0.5">{label}</p>
+                              <p className="text-sm text-gray-800 font-medium">{value || '—'}</p>
+                            </div>
+                          ))}
+                          {snap.description && (
+                            <div className="col-span-2 bg-white px-4 py-3">
+                              <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide mb-0.5">Description</p>
+                              <p className="text-sm text-gray-700 leading-relaxed">{snap.description}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* ── History Tab ── */}
-            {profileTab === 'history' && (
-              <div className="overflow-y-auto flex-1 space-y-3 pr-1">
-                {donorHistory.length === 0 ? (
-                  <div className="py-12 text-center text-sm text-gray-400">No history available.</div>
-                ) : (
-                  donorHistory.map((snap, idx) => (
-                    <div key={idx} className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
-                      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
-                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                          Version {idx + 1}
-                        </span>
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {formatDateTime(snap.saved_at)}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-px bg-gray-100">
-                        {[
-                          { label: 'Sponsor', value: snap.sponsor },
-                          { label: 'Program', value: snap.project },
-                          { label: 'Amount', value: snap.amount !== undefined ? `₱${Number(snap.amount).toLocaleString()}` : '—' },
-                          { label: 'Status', value: normalizeStatus(snap.status) },
-                          { label: 'Type', value: snap.type },
-                          { label: 'Beneficiaries', value: snap.units ?? '—' },
-                          { label: 'Payment Date', value: formatDate(snap.deliveryDate) },
-                          { label: 'Due Date', value: formatDate(snap.dueDate) },
-                        ].map(({ label, value }) => (
-                          <div key={label} className="bg-white px-4 py-3">
-                            <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide mb-0.5">{label}</p>
-                            <p className="text-sm text-gray-800 font-medium">{value || '—'}</p>
-                          </div>
-                        ))}
-                        {snap.description && (
-                          <div className="col-span-2 bg-white px-4 py-3">
-                            <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide mb-0.5">Description</p>
-                            <p className="text-sm text-gray-700 leading-relaxed">{snap.description}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
+              {/* Footer */}
+              <div className="flex justify-between items-center pt-4 border-t border-gray-100 mt-4 shrink-0">
+                <Button variant="secondary" type="button" onClick={handleDownloadSummary}>Download PDF</Button>
+                <Button type="button" onClick={() => setIsProfileOpen(false)}>Close</Button>
               </div>
-            )}
-
-            {/* Footer */}
-            <div className="flex justify-between items-center pt-4 border-t border-gray-100 mt-4 shrink-0">
-              <Button variant="secondary" type="button" onClick={handleDownloadSummary}>Download PDF</Button>
-              <Button type="button" onClick={() => setIsProfileOpen(false)}>Close</Button>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
     </div>
   );
