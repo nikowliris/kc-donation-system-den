@@ -101,16 +101,16 @@ export const DataProvider = ({ children }) => {
     }
   };
 
-  // Fetch all donors linked to a specific campaign
+  // Fetch donors linked to a campaign via the dedicated backend endpoint
+  // Uses GET /api/campaigns/:id/donors (added in campaigns.js router)
   const fetchCampaignDonors = async (campaignId) => {
     try {
       const token = getToken();
-      const res = await fetch(`${API_BASE}/donors`, {
+      const res = await fetch(`${API_BASE}/campaigns/${campaignId}/donors`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`Fetch campaign donors failed: ${res.status}`);
-      const all = await res.json();
-      return all.filter((d) => String(d.campaign_id) === String(campaignId));
+      return await res.json();
     } catch (err) {
       console.error("fetchCampaignDonors error:", err);
       return [];
@@ -521,52 +521,45 @@ export const DataProvider = ({ children }) => {
     fetchContactMessages();
   }, [token]);
 
-  // -------------
-  // Helpers
-  // -------------
-  const getDonorTotal = (donorName) =>
-    donations
-      .filter((d) => d.donor === donorName && d.status === "Completed")
-      .reduce((sum, d) => sum + d.amount, 0);
 
-  const getCampaignRaised = (campaignTitle) =>
-    donations
-      .filter((d) => d.campaign === campaignTitle && d.status === "Completed")
-      .reduce((sum, d) => sum + d.amount, 0);
+const value = useMemo(
+  () => ({
+    donors, campaigns, events, grants, causeMarketing, donations,
+    commTemplates, commWorkflows, commHistory,
+    contactMessages,
 
-  // ── NEW: sum donor amounts linked to a campaign by campaign_id ──────────────
-  const getCampaignDonorTotal = (campaignId) =>
-    donors
-      .filter((d) => String(d.campaign_id) === String(campaignId))
-      .reduce((sum, d) => sum + Number(d.amount || 0), 0);
+    getCampaignDonorTotal: (campaignId) =>
+      donors
+        .filter((d) => String(d.campaign_id) === String(campaignId))
+        .reduce((sum, d) => sum + Number(d.amount || 0), 0),
 
-  const value = useMemo(
-    () => ({
-      donors, campaigns, events, grants, causeMarketing, donations,
-      commTemplates, commWorkflows, commHistory,
-      contactMessages,
+    getDonorTotal: (donorName) =>
+      donations
+        .filter((d) => d.donor === donorName && d.status === "Completed")
+        .reduce((sum, d) => sum + d.amount, 0),
 
-      fetchDonors, addDonor, updateDonor, deleteDonor,
-      saveDonorSnapshot, fetchDonorHistory,
-      fetchCampaignDonors,
+    getCampaignRaised: (campaignTitle) =>
+      donations
+        .filter((d) => d.campaign === campaignTitle && d.status === "Completed")
+        .reduce((sum, d) => sum + d.amount, 0),
 
-      fetchCampaigns, addCampaign, updateCampaign, deleteCampaign,
-      fetchEvents, addEvent, updateEvent, deleteEvent,
-      addCampaignEvent, updateCampaignEvent, deleteCampaignEvent,
-      fetchGrants, addGrant, updateGrant, deleteGrant,
-      fetchCauseMarketing, addCauseMarketing, updateCauseMarketing, deleteCauseMarketing,
-      fetchDonations, addDonation, updateDonation, deleteDonation,
-      fetchCommTemplates, addCommTemplate, updateCommTemplate, deleteCommTemplate,
-      fetchCommWorkflows, updateCommWorkflow,
-      fetchCommHistory,
-      fetchContactMessages, markMessageRead, deleteContactMessage,
-
-      getDonorTotal, getCampaignRaised,
-      getCampaignDonorTotal,  // ← NEW
-    }),
-    [donors, campaigns, events, grants, causeMarketing, donations,
-     commTemplates, commWorkflows, commHistory, contactMessages]
-  );
+    fetchDonors, addDonor, updateDonor, deleteDonor,
+    saveDonorSnapshot, fetchDonorHistory,
+    fetchCampaignDonors,
+    fetchCampaigns, addCampaign, updateCampaign, deleteCampaign,
+    fetchEvents, addEvent, updateEvent, deleteEvent,
+    addCampaignEvent, updateCampaignEvent, deleteCampaignEvent,
+    fetchGrants, addGrant, updateGrant, deleteGrant,
+    fetchCauseMarketing, addCauseMarketing, updateCauseMarketing, deleteCauseMarketing,
+    fetchDonations, addDonation, updateDonation, deleteDonation,
+    fetchCommTemplates, addCommTemplate, updateCommTemplate, deleteCommTemplate,
+    fetchCommWorkflows, updateCommWorkflow,
+    fetchCommHistory,
+    fetchContactMessages, markMessageRead, deleteContactMessage,
+  }),
+  [donors, campaigns, events, grants, causeMarketing, donations,
+   commTemplates, commWorkflows, commHistory, contactMessages]
+);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 };

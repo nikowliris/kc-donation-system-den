@@ -4,122 +4,119 @@ import {
   AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
 import {
-  ArrowUpRight, Users, DollarSign, Megaphone, Activity, Clock, ChevronRight
+  ArrowUpRight, Users, DollarSign, Megaphone, Activity, Clock, ChevronRight, CheckCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { useData } from '../context/DataContext';
 import { useNavigate } from 'react-router-dom';
 
+const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#f97316', '#06b6d4'];
+
+const normalizeStatus = (s) => {
+  const v = String(s || '').trim().toLowerCase();
+  if (v === 'done' || v === 'complete' || v === 'completed') return 'Completed';
+  if (v === 'inactive') return 'Inactive';
+  if (v === 'active') return 'Active';
+  return s || 'Active';
+};
+
+const parseDateSafe = (val) => {
+  if (!val) return null;
+  const d = new Date(val);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
 export function Dashboard() {
-  const { donations, donors, campaigns } = useData();
+  const { donors } = useData();
   const navigate = useNavigate();
 
-  const parseDateSafe = (val) => {
-    if (!val) return null;
-    const d = new Date(val);
-    return Number.isNaN(d.getTime()) ? null : d;
-  };
-
-  const normalizeStatus = (s) => {
-    const v = String(s || '').trim().toLowerCase();
-    if (v === 'done' || v === 'complete' || v === 'completed') return 'Completed';
-    if (v === 'inactive') return 'Inactive';
-    if (v === 'active') return 'Active';
-    return s || 'Active';
-  };
-
-  const completedSponsors = useMemo(
-    () => donors.filter((r) => normalizeStatus(r.status) === 'Completed'),
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  const totalAmount = useMemo(
+    () => donors.reduce((sum, d) => sum + Number(d.amount || 0), 0),
     [donors]
   );
 
-  const totalSponsorAmount = useMemo(
-    () => donors.reduce((sum, r) => sum + Number(r.amount || 0), 0),
-    [donors]
-  );
-
-  const completedDonations = useMemo(
-    () => donations.filter((d) => d.status === 'Completed'),
-    [donations]
-  );
-
-  const totalDonationsRaised = useMemo(
-    () => completedDonations.reduce((sum, d) => sum + Number(d.amount || 0), 0),
-    [completedDonations]
-  );
-
-  const activeCampaigns = useMemo(
+  const activeCount = useMemo(
     () => donors.filter((d) => normalizeStatus(d.status) === 'Active').length,
     [donors]
   );
 
-  const avgDonation = useMemo(
-    () => completedDonations.length > 0 ? totalDonationsRaised / completedDonations.length : 0,
-    [completedDonations, totalDonationsRaised]
+  const completedCount = useMemo(
+    () => donors.filter((d) => normalizeStatus(d.status) === 'Completed').length,
+    [donors]
+  );
+
+  const uniqueSponsors = useMemo(
+    () => new Set(donors.map((d) => d.sponsor).filter(Boolean)).size,
+    [donors]
   );
 
   const stats = [
     {
       title: 'Total Sponsorship Amount',
-      value: `₱${totalSponsorAmount.toLocaleString()}`,
-      change: `${donors.length} records`,
+      value: `₱${totalAmount.toLocaleString()}`,
+      change: `${donors.length} total records`,
       icon: DollarSign,
       color: 'bg-green-50 text-green-600',
       border: 'border-l-4 border-l-green-500',
     },
     {
-      title: 'Total Online Donations',
-      value: `₱${totalDonationsRaised.toLocaleString()}`,
-      change: `${completedDonations.length} completed`,
+      title: 'Active Sponsorships',
+      value: activeCount.toString(),
+      change: 'currently ongoing',
       icon: Activity,
+      color: 'bg-blue-50 text-blue-600',
+      border: 'border-l-4 border-l-blue-500',
+    },
+    {
+      title: 'Completed Sponsorships',
+      value: completedCount.toString(),
+      change: 'fully delivered',
+      icon: CheckCircle,
       color: 'bg-purple-50 text-purple-600',
       border: 'border-l-4 border-l-purple-500',
     },
     {
-      title: 'Active Sponsorships',
-      value: activeCampaigns.toString(),
-      change: 'ongoing',
-      icon: Megaphone,
+      title: 'Unique Sponsors',
+      value: uniqueSponsors.toString(),
+      change: 'distinct sponsors',
+      icon: Users,
       color: 'bg-amber-50 text-amber-600',
       border: 'border-l-4 border-l-amber-500',
     },
-    {
-      title: 'Avg. Online Donation',
-      value: `₱${Math.round(avgDonation).toLocaleString()}`,
-      change: 'per donation',
-      icon: Users,
-      color: 'bg-blue-50 text-blue-600',
-      border: 'border-l-4 border-l-blue-500',
-    },
   ];
 
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // ── Monthly trend by deliveryDate ──────────────────────────────────────────
+  const monthlyTrendData = useMemo(() =>
+    MONTHS.map((name, i) => ({
+      name,
+      amount: donors
+        .filter((d) => { const dt = parseDateSafe(d.deliveryDate); return dt && dt.getMonth() === i; })
+        .reduce((sum, d) => sum + Number(d.amount || 0), 0),
+    })),
+    [donors]
+  );
 
-  const donationTrendData = useMemo(() => {
-    return monthNames.map((month, index) => {
-      const amount = completedDonations
-        .filter((d) => { const dt = parseDateSafe(d.date); return dt && dt.getMonth() === index; })
-        .reduce((sum, d) => sum + Number(d.amount || 0), 0);
-      return { name: month, amount };
-    });
-  }, [completedDonations]);
-
-  const campaignChartData = useMemo(() => {
+  // ── Amount by program ──────────────────────────────────────────────────────
+  const byProgramData = useMemo(() => {
     const map = new Map();
-    completedDonations.forEach((d) => {
-      const key = d.campaign || 'Unknown';
+    donors.forEach((d) => {
+      const key = d.project || 'Unknown';
       map.set(key, (map.get(key) || 0) + Number(d.amount || 0));
     });
     return Array.from(map.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
-      .map(([name, raised]) => ({
+      .map(([name, amount]) => ({
         name: name.length > 15 ? name.substring(0, 15) + '…' : name,
-        raised,
+        amount,
       }));
-  }, [completedDonations]);
+  }, [donors]);
 
-  const segmentationData = useMemo(() => {
+  // ── By sponsor type (pie) ──────────────────────────────────────────────────
+  const byTypeData = useMemo(() => {
     const map = new Map();
     donors.forEach((d) => {
       const t = d.type || 'Unknown';
@@ -128,40 +125,36 @@ export function Dashboard() {
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
   }, [donors]);
 
-  const channelData = useMemo(() => {
+  // ── By status breakdown ────────────────────────────────────────────────────
+  const byStatusData = useMemo(() => {
     const map = new Map();
-    donations.forEach((d) => {
-      const label = d.channel || 'Unknown';
-      map.set(label, (map.get(label) || 0) + 1);
+    donors.forEach((d) => {
+      const s = normalizeStatus(d.status);
+      map.set(s, (map.get(s) || 0) + 1);
     });
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [donations]);
+  }, [donors]);
 
-  const recentRecords = useMemo(() => {
-    return [...donors]
+  // ── Recent records ─────────────────────────────────────────────────────────
+  const recentRecords = useMemo(() =>
+    [...donors]
       .sort((a, b) => {
         const da = parseDateSafe(a.deliveryDate)?.getTime() || 0;
         const db = parseDateSafe(b.deliveryDate)?.getTime() || 0;
         return db - da;
       })
-      .slice(0, 5);
-  }, [donors]);
-
-  const recentDonations = useMemo(() => {
-    return [...donations]
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 5);
-  }, [donations]);
-
-  const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'];
+      .slice(0, 6),
+    [donors]
+  );
 
   return (
     <div className="space-y-6 px-1">
+
       {/* Header */}
       <div className="flex items-center justify-between pt-1">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 leading-tight">Dashboard Overview</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Welcome back! Here's what's happening today.</p>
+          <p className="text-sm text-gray-500 mt-0.5">Sponsorship records at a glance.</p>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-500 bg-white px-4 py-2.5 rounded-xl border border-gray-200 shadow-sm whitespace-nowrap">
           <Clock className="h-4 w-4 shrink-0" />
@@ -194,78 +187,68 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* Charts Row */}
+      {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Online Donation Trend */}
+
+        {/* Monthly Sponsorship Trend */}
         <Card>
           <CardHeader className="pb-2 pt-5 px-6">
             <CardTitle className="text-base font-semibold text-gray-800">
-              Online Donation Trends (by Month)
+              Sponsorship Amount by Month (Payment Date)
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-5">
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={donationTrendData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <AreaChart data={monthlyTrendData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
+                    <linearGradient id="colorAmt" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis
-                    dataKey="name"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: '#9ca3af', fontSize: 11 }}
-                    dy={8}
-                  />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 11 }} dy={8} />
                   <YAxis
-                    axisLine={false}
-                    tickLine={false}
+                    axisLine={false} tickLine={false}
                     tick={{ fill: '#9ca3af', fontSize: 11 }}
                     tickFormatter={(v) => `₱${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`}
-                    width={48}
+                    width={52}
                   />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
-                    formatter={(value) => [`₱${Number(value || 0).toLocaleString()}`, 'Amount']}
+                    formatter={(v) => [`₱${Number(v).toLocaleString()}`, 'Amount']}
                   />
-                  <Area type="monotone" dataKey="amount" stroke="#0ea5e9" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAmount)" />
+                  <Area type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAmt)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
 
-        {/* Top Campaigns */}
+        {/* Amount by Program */}
         <Card>
           <CardHeader className="pb-2 pt-5 px-6">
             <CardTitle className="text-base font-semibold text-gray-800">
-              Top Campaigns (by Online Donations)
+              Top Programs by Sponsorship Amount
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-5">
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={campaignChartData} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+                <BarChart data={byProgramData} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
                   <XAxis type="number" hide />
                   <YAxis
-                    dataKey="name"
-                    type="category"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: '#374151', fontSize: 12, fontWeight: 500 }}
-                    width={90}
+                    dataKey="name" type="category" axisLine={false} tickLine={false}
+                    tick={{ fill: '#374151', fontSize: 12, fontWeight: 500 }} width={90}
                   />
                   <Tooltip
                     cursor={{ fill: '#f9fafb' }}
                     contentStyle={{ backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
-                    formatter={(value) => [`₱${Number(value || 0).toLocaleString()}`, 'Raised']}
+                    formatter={(v) => [`₱${Number(v).toLocaleString()}`, 'Amount']}
                   />
-                  <Bar dataKey="raised" fill="#0ea5e9" radius={[0, 6, 6, 0]} barSize={22} />
+                  <Bar dataKey="amount" fill="#10b981" radius={[0, 6, 6, 0]} barSize={22} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -273,163 +256,30 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Recent Records Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Recent Sponsorship Records */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pt-5 pb-3 px-6">
-            <CardTitle className="text-base font-semibold text-gray-800">Recent Sponsorship Records</CardTitle>
-            <button
-              onClick={() => navigate('/donors')}
-              className="text-xs font-semibold text-sky-600 hover:text-sky-700 flex items-center gap-0.5 shrink-0"
-            >
-              View all <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </CardHeader>
-          <CardContent className="px-6 pb-5">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="pb-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-2/5">Sponsor</th>
-                  <th className="pb-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-1/4">Project</th>
-                  <th className="pb-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-1/5">Amount</th>
-                  <th className="pb-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-1/6">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {recentRecords.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="py-3 pr-3">
-                      <div className="font-medium text-sm text-gray-900 truncate">{r.sponsor || '—'}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        {r.deliveryDate ? new Date(r.deliveryDate).toISOString().split('T')[0] : '—'}
-                      </div>
-                    </td>
-                    <td className="py-3 pr-3 text-sm text-gray-600 truncate max-w-0">
-                      <span className="block truncate">{r.project || '—'}</span>
-                    </td>
-                    <td className="py-3 pr-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
-                      ₱{Number(r.amount || 0).toLocaleString()}
-                    </td>
-                    <td className="py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
-                        normalizeStatus(r.status) === 'Completed' ? 'bg-green-100 text-green-700' :
-                        normalizeStatus(r.status) === 'Active' ? 'bg-blue-100 text-blue-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {normalizeStatus(r.status)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {recentRecords.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-10 text-center text-sm text-gray-400">
-                      No sponsorship records yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-
-        {/* Recent Online Donations */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pt-5 pb-3 px-6">
-            <CardTitle className="text-base font-semibold text-gray-800">Recent Online Donations</CardTitle>
-            <button
-              onClick={() => navigate('/donations')}
-              className="text-xs font-semibold text-sky-600 hover:text-sky-700 flex items-center gap-0.5 shrink-0"
-            >
-              View all <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </CardHeader>
-          <CardContent className="px-6 pb-5">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="pb-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-2/5">Donor</th>
-                  <th className="pb-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-1/4">Campaign</th>
-                  <th className="pb-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-1/5">Amount</th>
-                  <th className="pb-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-1/6">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {recentDonations.map((d) => (
-                  <tr key={d.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="py-3 pr-3">
-                      <div className="font-medium text-sm text-gray-900 truncate">{d.donor}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{d.date}</div>
-                    </td>
-                    <td className="py-3 pr-3 text-sm text-gray-600 max-w-0">
-                      <span className="block truncate">{d.campaign}</span>
-                    </td>
-                    <td className="py-3 pr-3 text-sm font-semibold text-gray-900 whitespace-nowrap">
-                      ₱{Number(d.amount || 0).toLocaleString()}
-                    </td>
-                    <td className="py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
-                        d.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                        d.status === 'Pending' ? 'bg-amber-100 text-amber-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        {d.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {recentDonations.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-10 text-center text-sm text-gray-400">
-                      No online donations yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Bottom Row */}
+      {/* Charts Row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Donor Segmentation */}
+
+        {/* By Sponsor Type */}
         <Card className="flex flex-col">
           <CardHeader className="pt-5 pb-2 px-6">
-            <CardTitle className="text-base font-semibold text-gray-800">Sponsor Segmentation</CardTitle>
+            <CardTitle className="text-base font-semibold text-gray-800">By Source of Funds</CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-5 flex-1 flex flex-col">
             <div className="h-52">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie
-                    data={segmentationData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={75}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {segmentationData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
+                  <Pie data={byTypeData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
+                    {byTypeData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
-                  />
+                  <Tooltip contentStyle={{ backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e5e7eb' }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
             <div className="mt-3 space-y-2">
-              {segmentationData.map((entry, index) => (
+              {byTypeData.map((entry, i) => (
                 <div key={entry.name} className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
-                    <div
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                    />
+                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                     <span className="text-gray-600 truncate">{entry.name}</span>
                   </div>
                   <span className="font-semibold text-gray-900 ml-2">{entry.value}</span>
@@ -439,35 +289,104 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Online Donation Channels */}
+        {/* By Status */}
         <Card className="lg:col-span-2 flex flex-col">
           <CardHeader className="pt-5 pb-2 px-6">
-            <CardTitle className="text-base font-semibold text-gray-800">Online Donations by Channel</CardTitle>
+            <CardTitle className="text-base font-semibold text-gray-800">Sponsorship Status Breakdown</CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-5 flex-1">
-            {channelData.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 h-full content-start">
-                {channelData.map((entry, i) => (
-                  <div
-                    key={entry.name}
-                    className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex flex-col items-center justify-center text-center gap-1"
-                  >
-                    <div
-                      className="w-2 h-2 rounded-full mb-1"
-                      style={{ backgroundColor: COLORS[i % COLORS.length] }}
-                    />
-                    <div className="text-xs font-medium text-gray-500 leading-tight">{entry.name}</div>
-                    <div className="text-2xl font-bold text-gray-900">{entry.value}</div>
-                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Donations</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400 pt-4">No channel data yet.</p>
-            )}
+            <div className="grid grid-cols-3 gap-3 mb-5">
+              {byStatusData.map((s, i) => (
+                <div key={s.name} className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex flex-col items-center justify-center text-center gap-1">
+                  <div className="w-2 h-2 rounded-full mb-1"
+                    style={{ backgroundColor: s.name === 'Active' ? '#3b82f6' : s.name === 'Completed' ? '#22c55e' : '#9ca3af' }} />
+                  <div className="text-xs font-medium text-gray-500">{s.name}</div>
+                  <div className="text-3xl font-bold text-gray-900">{s.value}</div>
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">records</div>
+                </div>
+              ))}
+            </div>
+            {/* Mini bar chart */}
+            <div className="h-28">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={byStatusData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
+                  <YAxis axisLine={false} tickLine={false} allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip contentStyle={{ backgroundColor: '#fff', borderRadius: '10px', border: '1px solid #e5e7eb' }} />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={48}>
+                    {byStatusData.map((s, i) => (
+                      <Cell key={i} fill={s.name === 'Active' ? '#3b82f6' : s.name === 'Completed' ? '#22c55e' : '#9ca3af'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Recent Records Table */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pt-5 pb-3 px-6">
+          <CardTitle className="text-base font-semibold text-gray-800">Recent Sponsorship Records</CardTitle>
+          <button
+            onClick={() => navigate('/donors')}
+            className="text-xs font-semibold text-sky-600 hover:text-sky-700 flex items-center gap-0.5 shrink-0"
+          >
+            View all <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </CardHeader>
+        <CardContent className="px-6 pb-5">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-gray-100">
+                {['Sponsor', 'Program', 'Type', 'Amount', 'Payment Date', 'Due Date', 'Status'].map((h) => (
+                  <th key={h} className="pb-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {recentRecords.map((r) => (
+                <tr key={r.id} className="hover:bg-gray-50/60 transition-colors">
+                  <td className="py-3 pr-4">
+                    <div className="font-medium text-sm text-gray-900 truncate max-w-[140px]">{r.sponsor || '—'}</div>
+                    {r.email && <div className="text-xs text-gray-400 truncate max-w-[140px]">{r.email}</div>}
+                  </td>
+                  <td className="py-3 pr-4 text-sm text-gray-600 truncate max-w-[120px]">{r.project || '—'}</td>
+                  <td className="py-3 pr-4 text-sm text-gray-500 whitespace-nowrap">{r.type || '—'}</td>
+                  <td className="py-3 pr-4 text-sm font-semibold text-gray-900 whitespace-nowrap">
+                    ₱{Number(r.amount || 0).toLocaleString()}
+                  </td>
+                  <td className="py-3 pr-4 text-sm text-gray-500 whitespace-nowrap">
+                    {r.deliveryDate ? new Date(r.deliveryDate).toISOString().split('T')[0] : '—'}
+                  </td>
+                  <td className="py-3 pr-4 text-sm text-gray-500 whitespace-nowrap">
+                    {r.dueDate ? new Date(r.dueDate).toISOString().split('T')[0] : '—'}
+                  </td>
+                  <td className="py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
+                      normalizeStatus(r.status) === 'Completed' ? 'bg-green-100 text-green-700' :
+                      normalizeStatus(r.status) === 'Active'    ? 'bg-blue-100 text-blue-700' :
+                                                                   'bg-gray-100 text-gray-600'
+                    }`}>
+                      {normalizeStatus(r.status)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {recentRecords.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-sm text-gray-400">
+                    No sponsorship records yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
     </div>
   );
 }

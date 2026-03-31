@@ -1,10 +1,13 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { Search, Calendar } from 'lucide-react';
+import { Search, Calendar, Plus, Edit, Trash, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Input } from '../components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { Modal } from '../components/ui/Modal';
+import { Select } from '../components/ui/Select';
 import { useData } from '../context/DataContext';
 
 const formatDate = (val) => {
@@ -14,21 +17,40 @@ const formatDate = (val) => {
   return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
+const blankCampaign = {
+  title: '',
+  description: '',
+  target: '',
+  startDate: '',
+  endDate: '',
+  status: 'Active',
+  sponsor: '',
+  department: '',
+};
+
 export function Campaigns() {
   const {
     campaigns,
     donors,
-    getCampaignDonorTotal,  // ← uses donor amounts linked by campaign_id
+    getCampaignDonorTotal,
     fetchCampaignDonors,
+    addCampaign,
+    updateCampaign,
+    deleteCampaign,
   } = useData();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [campaignDonorMap, setCampaignDonorMap] = useState({});
 
+  // ── Modal state ────────────────────────────────────────────────────────────
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentCampaign, setCurrentCampaign] = useState(null);
+  const [form, setForm] = useState(blankCampaign);
+  const setField = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
+
   // ── Load donor counts per campaign ─────────────────────────────────────────
   useEffect(() => {
     if (!campaigns || campaigns.length === 0) return;
-
     const loadDonors = async () => {
       const map = {};
       await Promise.all(
@@ -39,11 +61,10 @@ export function Campaigns() {
       );
       setCampaignDonorMap(map);
     };
-
     loadDonors();
   }, [campaigns, donors]);
 
-  // ── Filtered list ───────────────────────────────────────────────────────────
+  // ── Filtered list ──────────────────────────────────────────────────────────
   const filteredCampaigns = useMemo(() => {
     const q = searchTerm.toLowerCase();
     return (campaigns || []).filter(c =>
@@ -52,13 +73,12 @@ export function Campaigns() {
     );
   }, [campaigns, searchTerm]);
 
-  // ── Stats ───────────────────────────────────────────────────────────────────
+  // ── Stats ──────────────────────────────────────────────────────────────────
   const totalTarget = useMemo(
     () => (campaigns || []).reduce((s, c) => s + Number(c.target || 0), 0),
     [campaigns]
   );
 
-  // Sum all donor amounts across every campaign
   const totalRaised = useMemo(
     () => (campaigns || []).reduce((s, c) => s + getCampaignDonorTotal(c.id), 0),
     [campaigns, donors]
@@ -66,6 +86,59 @@ export function Campaigns() {
 
   const activeCount    = useMemo(() => (campaigns || []).filter(c => c.status === 'Active').length, [campaigns]);
   const completedCount = useMemo(() => (campaigns || []).filter(c => c.status === 'Completed').length, [campaigns]);
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+  const handleAdd = () => {
+    setCurrentCampaign(null);
+    setForm(blankCampaign);
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = (e, campaign) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCurrentCampaign(campaign);
+    setForm({
+      title:       campaign.title       || '',
+      description: campaign.description || '',
+      target:      campaign.target      != null ? String(campaign.target) : '',
+      startDate:   campaign.startDate   ? String(campaign.startDate).slice(0, 10) : '',
+      endDate:     campaign.endDate     ? String(campaign.endDate).slice(0, 10) : '',
+      status:      campaign.status      || 'Active',
+      sponsor:     campaign.sponsor     || '',
+      department:  campaign.department  || '',
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirm('Delete this campaign? This cannot be undone.')) {
+      deleteCampaign(id);
+    }
+  };
+
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  const payload = {
+    title:       form.title,
+    description: form.description || null,
+    target:      Number(form.target || 0),
+    startDate:   form.startDate   || null,
+    endDate:     form.endDate     || null,  // ← add fallback
+    status:      form.status,
+    sponsor:     form.sponsor     || null,
+    department:  form.department  || null,
+  };
+
+  if (currentCampaign) {
+    await updateCampaign({ ...payload, id: currentCampaign.id });
+  } else {
+    await addCampaign(payload);
+  }
+  setIsModalOpen(false);
+};
 
   return (
     <div className="space-y-5 px-1">
@@ -76,6 +149,9 @@ export function Campaigns() {
           <h1 className="text-2xl font-bold text-gray-900 leading-tight">Programs</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage and track all fundraising programs.</p>
         </div>
+        <Button onClick={handleAdd} className="shrink-0">
+          <Plus className="h-4 w-4 mr-2" />Add Program
+        </Button>
       </div>
 
       {/* Search */}
@@ -112,9 +188,9 @@ export function Campaigns() {
       {/* Program Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredCampaigns.map((program) => {
-          const raised = getCampaignDonorTotal(program.id); // ← donor amounts by campaign_id
-          const target = Number(program.target || 0);
-          const pct    = target ? Math.round((raised / target) * 100) : 0;
+          const raised     = getCampaignDonorTotal(program.id);
+          const target     = Number(program.target || 0);
+          const pct        = target ? Math.min(100, Math.round((raised / target) * 100)) : 0;
           const donorCount = campaignDonorMap[program.id] ?? 0;
 
           return (
@@ -122,10 +198,29 @@ export function Campaigns() {
               <Card className="h-full hover:shadow-md transition-shadow cursor-pointer">
                 <CardHeader className="pb-2 pt-5 px-5">
                   <div className="flex justify-between items-center">
-                    <Badge variant={program.status === 'Active' ? 'success' : 'secondary'}>{program.status}</Badge>
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />{formatDate(program.endDate)}
-                    </span>
+                    <Badge variant={program.status === 'Active' ? 'success' : 'secondary'}>
+                      {program.status}
+                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />{formatDate(program.endDate)}
+                      </span>
+                      {/* Edit & Delete buttons */}
+                      <button
+                        onClick={(e) => handleEdit(e, program)}
+                        className="p-1 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                        title="Edit"
+                      >
+                        <Edit className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => handleDelete(e, program.id)}
+                        className="p-1 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <CardTitle className="mt-2.5 text-lg leading-snug hover:text-primary-600 transition-colors">
                     {program.title}
@@ -174,10 +269,126 @@ export function Campaigns() {
           );
         })}
 
-        {filteredCampaigns.length === 0 && (
+        {/* Add new card */}
+        <div
+          onClick={handleAdd}
+          className="border-dashed border-2 border-gray-200 bg-gray-50 flex items-center justify-center min-h-[220px] rounded-2xl cursor-pointer hover:bg-gray-100 transition-colors"
+        >
+          <div className="text-center">
+            <Plus className="h-8 w-8 mx-auto text-gray-400" />
+            <span className="mt-2 block text-sm font-medium text-gray-500">Add new program</span>
+          </div>
+        </div>
+
+        {filteredCampaigns.length === 0 && searchTerm && (
           <div className="col-span-full py-16 text-center text-sm text-gray-400">No programs found.</div>
         )}
       </div>
+
+      {/* ── Add / Edit Campaign Modal ── */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={currentCampaign ? 'Edit Program' : 'Add New Program'}
+      >
+        <form onSubmit={handleSubmit} className="flex flex-col" style={{ maxHeight: '75vh' }}>
+          <div className="overflow-y-auto pr-1 flex-1 space-y-4 py-1">
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Program Title *</label>
+              <Input
+                value={form.title}
+                onChange={setField('title')}
+                placeholder="e.g. KCPML 2026"
+                className="w-full"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Description</label>
+              <textarea
+                value={form.description}
+                onChange={setField('description')}
+                placeholder="Describe the program..."
+                rows={3}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Target Amount (₱) *</label>
+                <Input
+                  type="number"
+                  value={form.target}
+                  onChange={setField('target')}
+                  placeholder="e.g. 500000"
+                  className="w-full"
+                  required
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+                <Select
+                  value={form.status}
+                  onChange={setField('status')}
+                  options={[
+                    { label: 'Active',    value: 'Active' },
+                    { label: 'Completed', value: 'Completed' },
+                    { label: 'Inactive',  value: 'Inactive' },
+                  ]}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Start Date</label>
+                <Input
+                  type="date"
+                  value={form.startDate}
+                  onChange={setField('startDate')}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">End Date *</label>
+                <Input
+                  type="date"
+                  value={form.endDate}
+                  onChange={setField('endDate')}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Lead Sponsor</label>
+                <Input
+                  value={form.sponsor}
+                  onChange={setField('sponsor')}
+                  placeholder="e.g. DOST"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Department</label>
+                <Input
+                  value={form.department}
+                  onChange={setField('department')}
+                  placeholder="e.g. Programs Team"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2 shrink-0">
+            <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button type="submit">{currentCampaign ? 'Save Changes' : 'Create Program'}</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

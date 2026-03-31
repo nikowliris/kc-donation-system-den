@@ -12,6 +12,23 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 const PAGE_SIZE = 10;
 
+// ── Blank form state ──────────────────────────────────────────────────────────
+const blankForm = {
+  sponsor: '',
+  contact: '',
+  email: '',
+  project: 'Video Production',
+  campaign_id: '',
+  units: '',
+  deliveryDate: '',
+  dueDate: '',
+  amount: '',
+  tranches: '',
+  type: 'Government',
+  status: 'Active',
+  description: '',
+};
+
 export function Donors() {
   const {
     donors, campaigns,
@@ -31,6 +48,10 @@ export function Donors() {
   const [collapsedGroups, setCollapsedGroups] = useState({});
   const [profileTab, setProfileTab] = useState('details');
   const [donorHistory, setDonorHistory] = useState([]);
+
+  // ── Controlled form state ─────────────────────────────────────────────────
+  const [form, setForm] = useState(blankForm);
+  const setField = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const formatDate = (val) => {
@@ -63,7 +84,6 @@ export function Donors() {
     return 'secondary';
   };
 
-  // Find linked campaign object for a donor
   const getLinkedCampaign = (donor) => {
     if (!donor?.campaign_id) return null;
     return (campaigns || []).find((c) => String(c.id) === String(donor.campaign_id)) || null;
@@ -122,11 +142,28 @@ export function Donors() {
 
   const handleAddDonor = () => {
     setCurrentDonor(null);
+    setForm(blankForm);
     setIsModalOpen(true);
   };
 
   const handleEditDonor = (donor) => {
     setCurrentDonor(donor);
+    // Populate form with existing donor values
+    setForm({
+      sponsor:      donor.sponsor      || '',
+      contact:      donor.contact      || '',
+      email:        donor.email        || '',
+      project:      donor.project      || 'Video Production',
+      campaign_id:  donor.campaign_id  ? String(donor.campaign_id) : '',
+      units:        donor.units        != null ? String(donor.units) : '',
+      deliveryDate: donor.deliveryDate ? String(donor.deliveryDate).slice(0, 10) : '',
+      dueDate:      donor.dueDate      ? String(donor.dueDate).slice(0, 10) : '',
+      amount:       donor.amount       != null ? String(donor.amount) : '',
+      tranches:     donor.tranches     != null ? String(donor.tranches) : '',
+      type:         donor.type         || 'Government',
+      status:       normalizeStatus(donor.status),
+      description:  donor.description  || '',
+    });
     setIsModalOpen(true);
   };
 
@@ -134,7 +171,6 @@ export function Donors() {
     if (confirm('Are you sure you want to delete this record?')) deleteDonor(id);
   };
 
-  // Navigate to the linked campaign's page
   const handleGoToProject = (campaignId) => {
     setIsProfileOpen(false);
     navigate('/campaigns', { state: { openCampaignId: campaignId } });
@@ -142,26 +178,26 @@ export function Donors() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const formData = new FormData(e.target);
-    const rawCampaignId = formData.get('campaign_id');
+
     const newDonor = {
-      id: currentDonor ? currentDonor.id : undefined,
-      project: formData.get('project'),
-      description: formData.get('description'),
-      units: Number(formData.get('units') || 0),
-      deliveryDate: formData.get('deliveryDate') || null,
-      dueDate: formData.get('dueDate') || null,
-      sponsor: formData.get('sponsor'),
-      amount: Number(formData.get('amount') || 0),
-      type: formData.get('type'),
-      status: normalizeStatus(formData.get('status')),
-      email: formData.get('email') || null,
-      contact: formData.get('contact') || null,
-      tranches: Number(formData.get('tranches') || 0),
-      campaign_id: rawCampaignId && rawCampaignId !== '' ? Number(rawCampaignId) : null,
+      id:           currentDonor ? currentDonor.id : undefined,
+      sponsor:      form.sponsor,
+      contact:      form.contact      || null,
+      email:        form.email        || null,
+      project:      form.project      || null,
+      campaign_id:  form.campaign_id  ? Number(form.campaign_id) : null,
+      units:        Number(form.units    || 0),
+      deliveryDate: form.deliveryDate || null,
+      dueDate:      form.dueDate      || null,
+      amount:       Number(form.amount   || 0),
+      tranches:     Number(form.tranches || 0),
+      type:         form.type,
+      status:       normalizeStatus(form.status),
+      description:  form.description  || null,
     };
 
     if (currentDonor) {
+      // Save snapshot only if something actually changed
       const prevFields = {
         project: currentDonor.project, description: currentDonor.description,
         units: currentDonor.units, deliveryDate: currentDonor.deliveryDate,
@@ -204,9 +240,7 @@ export function Donors() {
     doc.text(`Units (Schools/PMLs): ${currentDonor.units ?? '-'}`, 20, 63);
     doc.text(`Delivery Date: ${formatDate(currentDonor.deliveryDate)}`, 20, 70);
     doc.text(`Due Date: ${formatDate(currentDonor.dueDate)}`, 20, 77);
-    if (linkedCampaign) {
-      doc.text(`Linked Campaign: ${linkedCampaign.title}`, 20, 84);
-    }
+    if (linkedCampaign) doc.text(`Linked Campaign: ${linkedCampaign.title}`, 20, 84);
     doc.setFontSize(12);
     doc.text(`Amount: ₱${Number(currentDonor.amount || 0).toLocaleString()}`, 20, 91);
     doc.setFontSize(11);
@@ -218,7 +252,6 @@ export function Donors() {
     doc.save(`${fileSafeName}-record-summary.pdf`);
   };
 
-  // Campaign options for the form select
   const campaignOptions = [
     { label: '— No linked campaign —', value: '' },
     ...(campaigns || []).map((c) => ({ label: c.title, value: String(c.id) })),
@@ -234,8 +267,7 @@ export function Donors() {
           <p className="text-sm text-gray-500 mt-0.5">Track projects, sponsors, and amounts.</p>
         </div>
         <Button onClick={handleAddDonor} className="shrink-0">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Record
+          <Plus className="h-4 w-4 mr-2" />Add Record
         </Button>
       </div>
 
@@ -274,12 +306,10 @@ export function Donors() {
             {paginatedSponsors.length === 0 && (
               <div className="py-12 text-center text-sm text-gray-400">No records found.</div>
             )}
-
             {paginatedSponsors.map((sponsorName) => {
               const rows = grouped[sponsorName];
               const isCollapsed = collapsedGroups[sponsorName];
               const totalAmount = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
-
               return (
                 <div key={sponsorName} className="rounded-xl border border-gray-200 overflow-hidden">
                   <button
@@ -299,8 +329,7 @@ export function Donors() {
                     </div>
                     {isCollapsed
                       ? <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
-                      : <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" />
-                    }
+                      : <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" />}
                   </button>
 
                   {!isCollapsed && (
@@ -312,22 +341,14 @@ export function Donors() {
                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Status</span>
                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-center">Actions</span>
                       </div>
-
                       {rows.map((row) => {
                         const linkedCampaign = getLinkedCampaign(row);
                         return (
-                          <div
-                            key={row.id}
-                            className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-center px-4 py-3 hover:bg-gray-50/60 transition-colors"
-                          >
+                          <div key={row.id} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-center px-4 py-3 hover:bg-gray-50/60 transition-colors">
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-gray-900 truncate">{row.project || '—'}</p>
-                              {row.description && (
-                                <p className="text-xs text-gray-400 truncate mt-0.5">{row.description}</p>
-                              )}
+                              {row.description && <p className="text-xs text-gray-400 truncate mt-0.5">{row.description}</p>}
                             </div>
-
-                            {/* Linked campaign pill */}
                             <div className="shrink-0">
                               {linkedCampaign ? (
                                 <button
@@ -342,7 +363,6 @@ export function Donors() {
                                 <span className="text-xs text-gray-300 italic">—</span>
                               )}
                             </div>
-
                             <span className="text-sm font-bold text-gray-900 whitespace-nowrap text-right">
                               ₱{Number(row.amount || 0).toLocaleString()}
                             </span>
@@ -350,25 +370,13 @@ export function Donors() {
                               {normalizeStatus(row.status)}
                             </Badge>
                             <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => handleViewProfile(row)}
-                                className="p-1.5 rounded-md text-gray-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
-                                title="View"
-                              >
+                              <button onClick={() => handleViewProfile(row)} className="p-1.5 rounded-md text-gray-400 hover:text-sky-600 hover:bg-sky-50 transition-colors" title="View">
                                 <Eye className="h-4 w-4" />
                               </button>
-                              <button
-                                onClick={() => handleEditDonor(row)}
-                                className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                                title="Edit"
-                              >
+                              <button onClick={() => handleEditDonor(row)} className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Edit">
                                 <Edit className="h-4 w-4" />
                               </button>
-                              <button
-                                onClick={() => handleDeleteDonor(row.id)}
-                                className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                                title="Delete"
-                              >
+                              <button onClick={() => handleDeleteDonor(row.id)} className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete">
                                 <Trash className="h-4 w-4" />
                               </button>
                             </div>
@@ -389,11 +397,8 @@ export function Donors() {
               <span className="font-medium text-gray-700">{sponsorNames.length}</span> sponsors
             </p>
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
+              <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}
+                className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                 <ChevronLeft className="h-4 w-4" />
               </button>
               {Array.from({ length: totalPages }, (_, i) => i + 1)
@@ -407,24 +412,16 @@ export function Donors() {
                   item === '...' ? (
                     <span key={`ellipsis-${idx}`} className="px-2 text-gray-400 text-sm select-none">…</span>
                   ) : (
-                    <button
-                      key={item}
-                      onClick={() => setCurrentPage(item)}
+                    <button key={item} onClick={() => setCurrentPage(item)}
                       className={`w-8 h-8 rounded-md text-sm font-medium transition-colors ${
-                        currentPage === item
-                          ? 'bg-primary-600 text-white shadow-sm'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
+                        currentPage === item ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                      }`}>
                       {item}
                     </button>
                   )
                 )}
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
+              <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+                className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
@@ -433,36 +430,30 @@ export function Donors() {
       </Card>
 
       {/* ── Add / Edit Modal ── */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={currentDonor ? 'Edit Record' : 'Add New Record'}
-      >
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentDonor ? 'Edit Record' : 'Add New Record'}>
         <form onSubmit={handleSubmit} className="flex flex-col" style={{ maxHeight: '70vh' }}>
           <div className="overflow-y-auto pr-1 flex-1 space-y-5">
             <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 space-y-4">
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Name of Sponsor</label>
-                <Input name="sponsor" defaultValue={currentDonor?.sponsor} placeholder="Enter sponsor name" className="w-full" required />
+                <Input value={form.sponsor} onChange={setField('sponsor')} placeholder="Enter sponsor name" className="w-full" required />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Contact Number</label>
-                  <Input name="contact" defaultValue={currentDonor?.contact} placeholder="e.g. 09123456789" />
+                  <Input value={form.contact} onChange={setField('contact')} placeholder="e.g. 09123456789" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Email</label>
-                  <Input name="email" type="email" defaultValue={currentDonor?.email} placeholder="example@email.com" />
+                  <Input type="email" value={form.email} onChange={setField('email')} placeholder="example@email.com" />
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Program</label>
-                <Select
-                  name="project"
-                  defaultValue={currentDonor?.project}
+                <Select value={form.project} onChange={setField('project')}
                   options={[
                     { label: 'Video Production', value: 'Video Production' },
                     { label: 'Knowledge Channel TV Package (KCTV)', value: 'KCTV' },
@@ -473,51 +464,43 @@ export function Donors() {
                 />
               </div>
 
-              {/* ── Linked Campaign ── */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Linked Campaign
-                  <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
+                  Linked Campaign <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
                 </label>
-                <Select
-                  name="campaign_id"
-                  defaultValue={currentDonor?.campaign_id ? String(currentDonor.campaign_id) : ''}
-                  options={campaignOptions}
-                />
+                <Select value={form.campaign_id} onChange={setField('campaign_id')} options={campaignOptions} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Number of Beneficiaries</label>
-                  <Input name="units" type="number" defaultValue={currentDonor?.units} placeholder="Enter number" />
+                  <Input type="number" value={form.units} onChange={setField('units')} placeholder="Enter number" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Date of Payment</label>
-                  <Input name="deliveryDate" type="date" defaultValue={currentDonor?.deliveryDate} />
+                  <Input type="date" value={form.deliveryDate} onChange={setField('deliveryDate')} />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Due Date</label>
-                  <Input name="dueDate" type="date" defaultValue={currentDonor?.dueDate} />
+                  <Input type="date" value={form.dueDate} onChange={setField('dueDate')} />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Amount (₱)</label>
-                  <Input name="amount" type="number" defaultValue={currentDonor?.amount} placeholder="0" />
+                  <Input type="number" value={form.amount} onChange={setField('amount')} placeholder="0" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Number of Tranches</label>
-                  <Input name="tranches" type="number" defaultValue={currentDonor?.tranches} placeholder="Enter number" />
+                  <Input type="number" value={form.tranches} onChange={setField('tranches')} placeholder="Enter number" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Source of Funds</label>
-                  <Select
-                    name="type"
-                    defaultValue={currentDonor?.type}
+                  <Select value={form.type} onChange={setField('type')}
                     options={[
                       { label: 'Government', value: 'Government' },
                       { label: 'Corporate', value: 'Corporate' },
@@ -532,9 +515,7 @@ export function Donors() {
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
-                <Select
-                  name="status"
-                  defaultValue={currentDonor?.status || 'Active'}
+                <Select value={form.status} onChange={setField('status')}
                   options={[
                     { label: 'Active', value: 'Active' },
                     { label: 'Completed', value: 'Completed' },
@@ -546,8 +527,8 @@ export function Donors() {
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Project Description</label>
                 <textarea
-                  name="description"
-                  defaultValue={currentDonor?.description}
+                  value={form.description}
+                  onChange={setField('description')}
                   placeholder="Enter project description..."
                   rows={3}
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
@@ -569,7 +550,6 @@ export function Donors() {
           const linkedCampaign = getLinkedCampaign(currentDonor);
           return (
             <div className="flex flex-col" style={{ maxHeight: '80vh' }}>
-
               {/* Sponsor header */}
               <div className="flex items-center gap-4 pb-3">
                 <div className="h-14 w-14 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 text-xl font-bold shrink-0">
@@ -580,13 +560,9 @@ export function Donors() {
                   <p className="text-sm text-gray-500 truncate">{currentDonor.project}</p>
                   {currentDonor.email && <p className="text-xs text-gray-400 truncate">{currentDonor.email}</p>}
                   {currentDonor.contact && <p className="text-xs text-gray-400 truncate">{currentDonor.contact}</p>}
-
-                  {/* Linked campaign chip */}
                   {linkedCampaign && (
-                    <button
-                      onClick={() => handleGoToProject(linkedCampaign.id)}
-                      className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold hover:bg-violet-100 transition-colors"
-                    >
+                    <button onClick={() => handleGoToProject(linkedCampaign.id)}
+                      className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-xs font-semibold hover:bg-violet-100 transition-colors">
                       <ExternalLink className="h-3 w-3 shrink-0" />
                       {linkedCampaign.title}
                     </button>
@@ -596,35 +572,23 @@ export function Donors() {
 
               {/* Tabs */}
               <div className="flex border-b border-gray-200 mb-4">
-                <button
-                  onClick={() => setProfileTab('details')}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    profileTab === 'details'
-                      ? 'border-primary-600 text-primary-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Details
-                </button>
-                <button
-                  onClick={() => setProfileTab('history')}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
-                    profileTab === 'history'
-                      ? 'border-primary-600 text-primary-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  <Clock className="h-3.5 w-3.5" />
-                  History
-                  {donorHistory.length > 0 && (
-                    <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-gray-200 text-[10px] font-bold text-gray-600">
-                      {donorHistory.length}
-                    </span>
-                  )}
-                </button>
+                {['details', 'history'].map((tab) => (
+                  <button key={tab} onClick={() => setProfileTab(tab)}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                      profileTab === tab ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}>
+                    {tab === 'history' && <Clock className="h-3.5 w-3.5" />}
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    {tab === 'history' && donorHistory.length > 0 && (
+                      <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-gray-200 text-[10px] font-bold text-gray-600">
+                        {donorHistory.length}
+                      </span>
+                    )}
+                  </button>
+                ))}
               </div>
 
-              {/* ── Details Tab ── */}
+              {/* Details Tab */}
               {profileTab === 'details' && (
                 <div className="overflow-y-auto flex-1 space-y-3 pr-1">
                   <div className="grid grid-cols-2 gap-3">
@@ -635,38 +599,26 @@ export function Donors() {
                     <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
                       <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1">Status</p>
                       <div className="mt-1">
-                        <Badge variant={statusBadgeVariant(currentDonor.status)}>
-                          {normalizeStatus(currentDonor.status)}
-                        </Badge>
+                        <Badge variant={statusBadgeVariant(currentDonor.status)}>{normalizeStatus(currentDonor.status)}</Badge>
                       </div>
                     </div>
                   </div>
 
-                  {/* Linked campaign detail card */}
                   {linkedCampaign && (
                     <div className="p-3.5 bg-violet-50 rounded-xl border border-violet-200 shadow-sm">
                       <p className="text-[10px] text-violet-600 uppercase font-semibold tracking-wide mb-2">Linked Campaign</p>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-violet-900 truncate">{linkedCampaign.title}</p>
-                          {linkedCampaign.description && (
-                            <p className="text-xs text-violet-700 mt-0.5 line-clamp-2">{linkedCampaign.description}</p>
-                          )}
+                          {linkedCampaign.description && <p className="text-xs text-violet-700 mt-0.5 line-clamp-2">{linkedCampaign.description}</p>}
                           <div className="flex items-center gap-3 mt-1.5 text-xs text-violet-600">
-                            {linkedCampaign.target && (
-                              <span>Target: ₱{Number(linkedCampaign.target).toLocaleString()}</span>
-                            )}
-                            {linkedCampaign.status && (
-                              <span className="capitalize">{linkedCampaign.status}</span>
-                            )}
+                            {linkedCampaign.target && <span>Target: ₱{Number(linkedCampaign.target).toLocaleString()}</span>}
+                            {linkedCampaign.status && <span className="capitalize">{linkedCampaign.status}</span>}
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleGoToProject(linkedCampaign.id)}
-                          className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition-colors"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          View
+                        <button onClick={() => handleGoToProject(linkedCampaign.id)}
+                          className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 transition-colors">
+                          <ExternalLink className="h-3 w-3" /> View
                         </button>
                       </div>
                     </div>
@@ -674,11 +626,11 @@ export function Donors() {
 
                   <div className="grid grid-cols-2 gap-3">
                     {[
-                      { label: 'Type', value: currentDonor.type },
+                      { label: 'Type',           value: currentDonor.type },
                       { label: 'Schools / PMLs', value: currentDonor.units ?? '—' },
-                      { label: 'Payment Date', value: formatDate(currentDonor.deliveryDate) },
-                      { label: 'Due Date', value: formatDate(currentDonor.dueDate) },
-                      { label: 'Tranches', value: currentDonor.tranches ?? '—' },
+                      { label: 'Payment Date',   value: formatDate(currentDonor.deliveryDate) },
+                      { label: 'Due Date',        value: formatDate(currentDonor.dueDate) },
+                      { label: 'Tranches',        value: currentDonor.tranches ?? '—' },
                     ].map(({ label, value }) => (
                       <div key={label} className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm">
                         <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1">{label}</p>
@@ -693,7 +645,7 @@ export function Donors() {
                 </div>
               )}
 
-              {/* ── History Tab ── */}
+              {/* History Tab */}
               {profileTab === 'history' && (
                 <div className="overflow-y-auto flex-1 space-y-3 pr-1">
                   {donorHistory.length === 0 ? (
@@ -702,24 +654,21 @@ export function Donors() {
                     donorHistory.map((snap, idx) => (
                       <div key={idx} className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
                         <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
-                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                            Version {idx + 1}
-                          </span>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Version {idx + 1}</span>
                           <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {formatDateTime(snap.saved_at)}
+                            <Clock className="h-3 w-3" />{formatDateTime(snap.saved_at)}
                           </span>
                         </div>
                         <div className="grid grid-cols-2 gap-px bg-gray-100">
                           {[
-                            { label: 'Sponsor', value: snap.sponsor },
-                            { label: 'Program', value: snap.project },
-                            { label: 'Amount', value: snap.amount !== undefined ? `₱${Number(snap.amount).toLocaleString()}` : '—' },
-                            { label: 'Status', value: normalizeStatus(snap.status) },
-                            { label: 'Type', value: snap.type },
+                            { label: 'Sponsor',       value: snap.sponsor },
+                            { label: 'Program',       value: snap.project },
+                            { label: 'Amount',        value: snap.amount !== undefined ? `₱${Number(snap.amount).toLocaleString()}` : '—' },
+                            { label: 'Status',        value: normalizeStatus(snap.status) },
+                            { label: 'Type',          value: snap.type },
                             { label: 'Beneficiaries', value: snap.units ?? '—' },
-                            { label: 'Payment Date', value: formatDate(snap.deliveryDate) },
-                            { label: 'Due Date', value: formatDate(snap.dueDate) },
+                            { label: 'Payment Date',  value: formatDate(snap.deliveryDate) },
+                            { label: 'Due Date',      value: formatDate(snap.dueDate) },
                           ].map(({ label, value }) => (
                             <div key={label} className="bg-white px-4 py-3">
                               <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide mb-0.5">{label}</p>
@@ -739,7 +688,6 @@ export function Donors() {
                 </div>
               )}
 
-              {/* Footer */}
               <div className="flex justify-between items-center pt-4 border-t border-gray-100 mt-4 shrink-0">
                 <Button variant="secondary" type="button" onClick={handleDownloadSummary}>Download PDF</Button>
                 <Button type="button" onClick={() => setIsProfileOpen(false)}>Close</Button>
