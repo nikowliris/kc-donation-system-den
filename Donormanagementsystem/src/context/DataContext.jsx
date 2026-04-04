@@ -4,7 +4,7 @@ import { useAuth } from "./AuthContext";
 const DataContext = createContext();
 export const useData = () => useContext(DataContext);
 
-const API_BASE = "/api";
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5001') + '/api';
 const getToken = () => localStorage.getItem("token");
 
 export const DataProvider = ({ children }) => {
