@@ -20,8 +20,14 @@ const messagesRoutes = require('./routes/messages.routes')
 const app = express();
 
 app.use(cors({
-  origin: /^http:\/\/localhost:\d+$/,
-  credentials: true,
+  origin: function(origin, callback) {
+    if (!origin || origin.endsWith('.vercel.app') || origin === 'http://localhost:5173') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
 }));
 app.use(express.json());
 
