@@ -74,10 +74,16 @@ export function Campaigns() {
   }, [campaigns, searchTerm]);
 
   // ── Stats ──────────────────────────────────────────────────────────────────
-  const totalTarget = useMemo(
-    () => (campaigns || []).reduce((s, c) => s + Number(c.target || 0), 0),
-    [campaigns]
-  );
+// REPLACE WITH:
+const totalTarget = useMemo(() => {
+  // Sum targets only for campaigns that have at least one linked donor
+  return (campaigns || []).reduce((s, c) => {
+    const hasLinkedDonors = (donors || []).some(
+      (d) => String(d.campaign_id) === String(c.id)
+    );
+    return hasLinkedDonors ? s + Number(c.target || 0) : s;
+  }, 0);
+}, [campaigns, donors]);
 
   const totalRaised = useMemo(
     () => (campaigns || []).reduce((s, c) => s + getCampaignDonorTotal(c.id), 0),

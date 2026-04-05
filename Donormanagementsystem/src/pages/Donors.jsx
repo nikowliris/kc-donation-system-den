@@ -530,7 +530,7 @@ const handleDownloadSummary = () => {
                 <div key={sponsorName} className="rounded-xl border border-gray-200 overflow-hidden">
                   <button
                     onClick={() => toggleGroup(sponsorName)}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                    className="w-full flex items-center justify-between px-4 py-1.5 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="h-8 w-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 text-sm font-bold shrink-0">
@@ -560,7 +560,7 @@ const handleDownloadSummary = () => {
                       {rows.map((row) => {
                         const linkedCampaign = getLinkedCampaign(row);
                         return (
-                          <div key={row.id} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-center px-4 py-3 hover:bg-gray-50/60 transition-colors">
+                          <div key={row.id} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-center px-4 py-1.5 hover:bg-gray-50/60 transition-colors">
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-gray-900 truncate">{row.project || '—'}</p>
                               {row.description && <p className="text-xs text-gray-400 truncate mt-0.5">{row.description}</p>}
@@ -708,7 +708,7 @@ const handleDownloadSummary = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Number of Beneficiaries</label>
-                  <Input value={form.units} onChange={setField('units')} placeholder="e.g. 25 episodes, Marikina- 17 ES" />
+                  <Input type="number" value={form.units} onChange={setField('units')} placeholder="Enter number" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Date of Payment</label>
