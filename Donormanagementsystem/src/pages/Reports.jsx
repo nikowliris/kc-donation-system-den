@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Select } from '../components/ui/Select';
 import { Input } from '../components/ui/Input';
 import { useData } from '../context/DataContext';
+import jsPDF from 'jspdf';
+import kcLogo from '../assets/1.png';
 
 const COLORS = ['#3b82f6', '#22c55e', '#eab308', '#ef4444', '#8b5cf6', '#f97316', '#06b6d4'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -21,15 +23,20 @@ const normalizeStatus = (s) => {
   return s || 'Active';
 };
 
+const formatDate = (val) => {
+  if (!val) return '—';
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return String(val).slice(0, 10);
+  return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
 export function Reports() {
   const { donors } = useData();
 
-  // ─── SHARED FILTERS ───────────────────────────────────────────────────────
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
 
-  // ─── FILTERED DATA ────────────────────────────────────────────────────────
   const filteredDonors = useMemo(() => {
     return donors.filter((d) => {
       const date = new Date(d.deliveryDate);
@@ -40,13 +47,11 @@ export function Reports() {
     });
   }, [donors, startDate, endDate, typeFilter]);
 
-  // ─── STATS ────────────────────────────────────────────────────────────────
   const sponTotal = filteredDonors.reduce((s, d) => s + Number(d.amount || 0), 0);
   const sponActive = filteredDonors.filter((d) => normalizeStatus(d.status) === 'Active').length;
   const sponCompleted = filteredDonors.filter((d) => normalizeStatus(d.status) === 'Completed').length;
   const sponInactive = filteredDonors.filter((d) => normalizeStatus(d.status) === 'Inactive').length;
 
-  // ─── CHART DATA ───────────────────────────────────────────────────────────
   const monthlyTrendData = useMemo(() => MONTHS.map((month, i) => ({
     name: month,
     Sponsorships: filteredDonors
@@ -83,16 +88,249 @@ export function Reports() {
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
   }, [filteredDonors]);
 
-  // ─── EXPORT ───────────────────────────────────────────────────────────────
-  const handleExportSponsorships = () => {
-    const headers = ['ID','Project','Sponsor','Amount','Type','Status','Delivery Date','Due Date'];
-    const rows = filteredDonors.map((d) =>
-      [d.id, d.project, d.sponsor, d.amount, d.type, d.status, d.deliveryDate, d.dueDate].join(',')
-    );
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv' }));
-    a.download = 'sponsorships-report.csv';
-    a.click();
+  // ─── PDF EXPORT ────────────────────────────────────────────────────────────
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    const pageW = doc.internal.pageSize.getWidth();
+    const orange = [230, 126, 0];
+    const yellow = [255, 193, 7];
+    const white = [255, 255, 255];
+    const black = [20, 20, 20];
+    const gray = [100, 100, 100];
+    const lightOrange = [255, 252, 240];
+
+    const rptNo = `RPT-${Date.now().toString().slice(-6)}`;
+    const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    // ── HEADER ──────────────────────────────────────────────────────────────
+    doc.setFillColor(...orange);
+    doc.rect(0, 0, pageW, 3, 'F');
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 3, pageW, 36, 'F');
+    doc.addImage(kcLogo, 'PNG', 12, 7, 22, 22);
+    doc.setTextColor(...black);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SPONSORSHIP REPORT', 38, 16);
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...gray);
+    doc.text('Knowledge Channel Foundation, Inc.', 38, 22);
+    doc.text('Congressional Ave., Quezon City, Metro Manila', 38, 27);
+    doc.text('finance@knowledgechannel.org', 38, 32);
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...gray);
+    doc.text('Report No.', pageW - 14, 13, { align: 'right' });
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...black);
+    doc.setFontSize(9);
+    doc.text(rptNo, pageW - 14, 19, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...gray);
+    doc.text('Date', pageW - 14, 27, { align: 'right' });
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...black);
+    doc.setFontSize(9);
+    doc.text(today, pageW - 14, 33, { align: 'right' });
+
+    // Double divider
+    doc.setFillColor(...yellow);
+    doc.rect(0, 39, pageW, 2, 'F');
+    doc.setFillColor(...orange);
+    doc.rect(0, 41, pageW, 1, 'F');
+
+    // ── FILTERS APPLIED ─────────────────────────────────────────────────────
+    let y = 52;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(180, 100, 0);
+    doc.text('FILTERS APPLIED', 14, y);
+    doc.setDrawColor(...orange);
+    doc.setLineWidth(0.4);
+    doc.line(14, y + 2, 54, y + 2);
+    doc.setLineWidth(0.2);
+    y += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...gray);
+    doc.text(`Date Range: ${startDate ? formatDate(startDate) : 'All'} — ${endDate ? formatDate(endDate) : 'All'}`, 14, y);
+    doc.text(`Sponsor Type: ${typeFilter}`, pageW / 2, y);
+    y += 5;
+
+    // ── SUMMARY STATS ────────────────────────────────────────────────────────
+    y += 6;
+    doc.setFillColor(...yellow);
+    doc.rect(14, y, pageW - 28, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(80, 40, 0);
+    doc.text('SUMMARY', 17, y + 5.5);
+    y += 8;
+
+    const stats = [
+      ['Total Amount', `PHP ${sponTotal.toLocaleString()}`],
+      ['Total Records', String(filteredDonors.length)],
+      ['Active', String(sponActive)],
+      ['Completed', String(sponCompleted)],
+      ['Inactive', String(sponInactive)],
+    ];
+
+    const colW = (pageW - 28) / stats.length;
+    doc.setFillColor(...lightOrange);
+    doc.rect(14, y, pageW - 28, 20, 'F');
+    doc.setDrawColor(240, 200, 100);
+    doc.rect(14, y, pageW - 28, 20, 'S');
+    stats.forEach(([label, val], i) => {
+      const x = 17 + i * colW;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(...gray);
+      doc.text(label.toUpperCase(), x, y + 7);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(...black);
+      doc.text(val, x, y + 16);
+    });
+    y += 28;
+
+    // ── BY PROGRAM TABLE ─────────────────────────────────────────────────────
+    doc.setFillColor(...yellow);
+    doc.rect(14, y, pageW - 28, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(80, 40, 0);
+    doc.text('SPONSORSHIPS BY PROGRAM', 17, y + 5.5);
+    doc.text('AMOUNT', pageW - 16, y + 5.5, { align: 'right' });
+    y += 8;
+
+    // group by program
+    const programMap = new Map();
+    filteredDonors.forEach((d) => {
+      const k = d.project || 'Unknown';
+      programMap.set(k, (programMap.get(k) || 0) + Number(d.amount || 0));
+    });
+    const programRows = Array.from(programMap.entries()).sort((a, b) => b[1] - a[1]);
+
+    programRows.forEach(([prog, amt], i) => {
+      if (y > 265) { doc.addPage(); y = 20; }
+      doc.setFillColor(i % 2 === 0 ? 255 : 250, i % 2 === 0 ? 252 : 248, i % 2 === 0 ? 240 : 235);
+      doc.rect(14, y, pageW - 28, 8, 'F');
+      doc.setDrawColor(240, 200, 100);
+      doc.setLineWidth(0.1);
+      doc.rect(14, y, pageW - 28, 8, 'S');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...black);
+      doc.text(prog.substring(0, 50), 17, y + 5.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`PHP ${amt.toLocaleString()}`, pageW - 16, y + 5.5, { align: 'right' });
+      y += 8;
+    });
+
+    // ── BY TYPE TABLE ────────────────────────────────────────────────────────
+    y += 6;
+    if (y > 240) { doc.addPage(); y = 20; }
+    doc.setFillColor(...yellow);
+    doc.rect(14, y, pageW - 28, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(80, 40, 0);
+    doc.text('SPONSORSHIPS BY TYPE', 17, y + 5.5);
+    doc.text('COUNT', pageW / 2, y + 5.5);
+    doc.text('AMOUNT', pageW - 16, y + 5.5, { align: 'right' });
+    y += 8;
+
+    const typeMap = new Map();
+    filteredDonors.forEach((d) => {
+      const k = d.type || 'Unknown';
+      if (!typeMap.has(k)) typeMap.set(k, { count: 0, amount: 0 });
+      typeMap.get(k).count += 1;
+      typeMap.get(k).amount += Number(d.amount || 0);
+    });
+    Array.from(typeMap.entries()).sort((a, b) => b[1].amount - a[1].amount).forEach(([type, { count, amount }], i) => {
+      if (y > 265) { doc.addPage(); y = 20; }
+      doc.setFillColor(i % 2 === 0 ? 255 : 250, i % 2 === 0 ? 252 : 248, i % 2 === 0 ? 240 : 235);
+      doc.rect(14, y, pageW - 28, 8, 'F');
+      doc.setDrawColor(240, 200, 100);
+      doc.setLineWidth(0.1);
+      doc.rect(14, y, pageW - 28, 8, 'S');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...black);
+      doc.text(type, 17, y + 5.5);
+      doc.text(String(count), pageW / 2, y + 5.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`PHP ${amount.toLocaleString()}`, pageW - 16, y + 5.5, { align: 'right' });
+      y += 8;
+    });
+
+    // ── RECORDS TABLE ────────────────────────────────────────────────────────
+    y += 6;
+    if (y > 220) { doc.addPage(); y = 20; }
+    doc.setFillColor(...yellow);
+    doc.rect(14, y, pageW - 28, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(80, 40, 0);
+    const COL = { sponsor: 17, program: 68, type: 120, status: 148, date: 168, amount: pageW - 16 };
+    doc.text('SPONSOR', COL.sponsor, y + 5.5);
+    doc.text('PROGRAM', COL.program, y + 5.5);
+    doc.text('TYPE', COL.type, y + 5.5);
+    doc.text('STATUS', COL.status, y + 5.5);
+    doc.text('DATE', COL.date, y + 5.5);
+    doc.text('AMOUNT', COL.amount, y + 5.5, { align: 'right' });
+    y += 8;
+
+    filteredDonors.forEach((d, i) => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.setFillColor(i % 2 === 0 ? 255 : 250, i % 2 === 0 ? 252 : 248, i % 2 === 0 ? 240 : 235);
+      doc.rect(14, y, pageW - 28, 7, 'F');
+      doc.setDrawColor(240, 200, 100);
+      doc.setLineWidth(0.1);
+      doc.rect(14, y, pageW - 28, 7, 'S');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(...black);
+      doc.text(String(d.sponsor || '—').substring(0, 22), COL.sponsor, y + 5);
+      doc.text(String(d.project || '—').substring(0, 18), COL.program, y + 5);
+      doc.text(String(d.type || '—').substring(0, 10), COL.type, y + 5);
+      doc.text(normalizeStatus(d.status).substring(0, 10), COL.status, y + 5);
+      doc.text(d.deliveryDate ? String(d.deliveryDate).slice(0, 10) : '—', COL.date, y + 5);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`PHP ${Number(d.amount || 0).toLocaleString()}`, COL.amount, y + 5, { align: 'right' });
+      y += 7;
+    });
+
+    // ── TOTAL ROW ─────────────────────────────────────────────────────────
+    if (y > 265) { doc.addPage(); y = 20; }
+    doc.setFillColor(...orange);
+    doc.rect(14, y, pageW - 28, 9, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...white);
+    doc.text('TOTAL', COL.sponsor, y + 6);
+    doc.text(`PHP ${sponTotal.toLocaleString()}`, COL.amount, y + 6, { align: 'right' });
+    y += 9;
+
+    // ── FOOTER on every page ─────────────────────────────────────────────
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFillColor(...orange);
+      doc.rect(0, 278, pageW, 1.5, 'F');
+      doc.setFillColor(...yellow);
+      doc.rect(0, 279.5, pageW, 18, 'F');
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7.5);
+      doc.setTextColor(80, 40, 0);
+      doc.text('Thank you for your generous support of quality education for every Filipino child.', pageW / 2, 287, { align: 'center' });
+      doc.text(`Knowledge Channel Foundation  ·  finance@knowledgechannel.org  ·  www.knowledgechannel.org  ·  Page ${i} of ${totalPages}`, pageW / 2, 293, { align: 'center' });
+    }
+
+    doc.save(`sponsorship-report-${rptNo}.pdf`);
   };
 
   return (
@@ -104,8 +342,8 @@ export function Reports() {
           <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
           <p className="text-sm text-gray-500">Overview of sponsorship records.</p>
         </div>
-        <Button variant="secondary" onClick={handleExportSponsorships}>
-          <Download className="h-4 w-4 mr-2" /> Export CSV
+        <Button variant="secondary" onClick={handleExportPDF}>
+          <Download className="h-4 w-4 mr-2" /> Export PDF
         </Button>
       </div>
 
@@ -139,10 +377,7 @@ export function Reports() {
                 ]}
               />
             </div>
-            <Button
-              variant="secondary"
-              onClick={() => { setStartDate(''); setEndDate(''); setTypeFilter('All'); }}
-            >
+            <Button variant="secondary" onClick={() => { setStartDate(''); setEndDate(''); setTypeFilter('All'); }}>
               Reset
             </Button>
           </div>
@@ -233,7 +468,7 @@ export function Reports() {
         {/* Sponsorships by Type */}
         <Card>
           <CardHeader><CardTitle>Sponsorships by Sponsor Type</CardTitle></CardHeader>
-          <CardContent className="pl-0">
+          <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -287,8 +522,8 @@ export function Reports() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Sponsorship Records</CardTitle>
-            <Button variant="secondary" onClick={handleExportSponsorships}>
-              <Download className="h-4 w-4 mr-2" /> Export CSV
+            <Button variant="secondary" onClick={handleExportPDF}>
+              <Download className="h-4 w-4 mr-2" /> Export PDF
             </Button>
           </div>
         </CardHeader>
