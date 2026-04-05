@@ -20,7 +20,8 @@ const blankForm = {
   project: 'Video Production',
   projectOther: '',
   campaign_id: '',
-  units: '',
+  unitsCount: '',
+  unitsLabel: '',
   deliveryDate: '',
   dueDate: '',
   amount: '',
@@ -53,7 +54,6 @@ export function Donors() {
   const [form, setForm] = useState(blankForm);
   const setField = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  // The known program options (excluding Others)
   const KNOWN_PROGRAMS = [
     'Video Production',
     'Knowledge Channel TV Package (KCTV)',
@@ -63,11 +63,19 @@ export function Donors() {
     'Teacher Training',
   ];
 
-  // When editing, detect if the saved project is a custom "Others" value
   const isKnownProgram = (val) =>
-    !val ||
-    KNOWN_PROGRAMS.includes(val) ||
-    val === 'Others';
+    !val || KNOWN_PROGRAMS.includes(val) || val === 'Others';
+
+  // Parse "25 schools" => { unitsCount: '25', unitsLabel: 'schools' }
+  const parseUnits = (val) => {
+    if (!val && val !== 0) return { unitsCount: '', unitsLabel: '' };
+    const str = String(val).trim();
+    const match = str.match(/^(\d+)\s*(.*)$/);
+    if (match) {
+      return { unitsCount: match[1], unitsLabel: match[2].trim() };
+    }
+    return { unitsCount: '', unitsLabel: str };
+  };
 
   const formatDate = (val) => {
     if (!val) return '-';
@@ -160,10 +168,9 @@ export function Donors() {
 
   const handleEditDonor = (donor) => {
     setCurrentDonor(donor);
-
-    // Determine if the saved project is a custom value (not in the known list)
     const savedProject = donor.project || 'Video Production';
     const isCustom = !isKnownProgram(savedProject);
+    const { unitsCount, unitsLabel } = parseUnits(donor.units);
 
     setForm({
       sponsor:      donor.sponsor      || '',
@@ -172,7 +179,8 @@ export function Donors() {
       project:      isCustom ? 'Others' : savedProject,
       projectOther: isCustom ? savedProject : '',
       campaign_id:  donor.campaign_id  ? String(donor.campaign_id) : '',
-      units:        donor.units        != null ? String(donor.units) : '',
+      unitsCount,
+      unitsLabel,
       deliveryDate: donor.deliveryDate ? String(donor.deliveryDate).slice(0, 10) : '',
       dueDate:      donor.dueDate      ? String(donor.dueDate).slice(0, 10) : '',
       amount:       donor.amount       != null ? String(donor.amount) : '',
@@ -194,12 +202,19 @@ export function Donors() {
     navigate('/campaigns', { state: { openCampaignId: campaignId } });
   };
 
-  // Resolve the final project value: if "Others", use the custom text field
   const resolveProject = () => {
     if (form.project === 'Others') {
       return form.projectOther.trim() || 'Others';
     }
     return form.project;
+  };
+
+  // Combine count + label back into a single string e.g. "25 schools"
+  const resolveUnits = () => {
+    const count = form.unitsCount.trim();
+    const label = form.unitsLabel.trim();
+    if (!count && !label) return null;
+    return [count, label].filter(Boolean).join(' ');
   };
 
   const handleSubmit = async (e) => {
@@ -212,7 +227,7 @@ export function Donors() {
       email:        form.email        || null,
       project:      resolveProject(),
       campaign_id:  form.campaign_id  ? Number(form.campaign_id) : null,
-      units:        Number(form.units    || 0),
+      units:        resolveUnits(),
       deliveryDate: form.deliveryDate || null,
       dueDate:      form.dueDate      || null,
       amount:       Number(form.amount   || 0),
@@ -235,242 +250,233 @@ export function Donors() {
     setIsModalOpen(false);
   };
 
-const handleDownloadSummary = () => {
-  if (!currentDonor) return;
-  const linkedCampaign = getLinkedCampaign(currentDonor);
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  const W = 595;
-  const orange = [230, 126, 14];
-  const white = [255, 255, 255];
-  const black = [0, 0, 0];
-  const gray = [120, 120, 120];
-  const lightOrange = [255, 243, 220];
+  const handleDownloadSummary = () => {
+    if (!currentDonor) return;
+    const linkedCampaign = getLinkedCampaign(currentDonor);
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const W = 595;
+    const orange = [230, 126, 14];
+    const white = [255, 255, 255];
+    const black = [0, 0, 0];
+    const gray = [120, 120, 120];
+    const lightOrange = [255, 243, 220];
 
-  doc.setFillColor(...orange);
-  doc.rect(0, 0, W, 8, 'F');
+    doc.setFillColor(...orange);
+    doc.rect(0, 0, W, 8, 'F');
+    doc.addImage(kcLogo, 'PNG', 30, 14, 60, 60);
+    doc.setTextColor(...black);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SPONSORSHIP RECORD SUMMARY', 105, 30);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...gray);
+    doc.text('Knowledge Channel Foundation, Inc.', 105, 45);
+    doc.text('Congressional Ave., Quezon City, Metro Manila', 105, 57);
+    doc.text('finance@knowledgechannel.org', 105, 69);
 
-  doc.addImage(kcLogo, 'PNG', 30, 14, 60, 60);
+    const statNo = `REC-${Math.floor(100000 + Math.random() * 900000)}`;
+    const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    doc.setTextColor(...gray);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Record No.', W - 40, 35, { align: 'right' });
+    doc.setTextColor(...black);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(statNo, W - 40, 47, { align: 'right' });
+    doc.setTextColor(...gray);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text('Date', W - 40, 62, { align: 'right' });
+    doc.setTextColor(...black);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(today, W - 40, 74, { align: 'right' });
 
-  doc.setTextColor(...black);
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('SPONSORSHIP RECORD SUMMARY', 105, 30);
-
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...gray);
-  doc.text('Knowledge Channel Foundation, Inc.', 105, 45);
-  doc.text('Congressional Ave., Quezon City, Metro Manila', 105, 57);
-  doc.text('finance@knowledgechannel.org', 105, 69);
-
-  const statNo = `REC-${Math.floor(100000 + Math.random() * 900000)}`;
-  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  doc.setTextColor(...gray);
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Record No.', W - 40, 35, { align: 'right' });
-  doc.setTextColor(...black);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text(statNo, W - 40, 47, { align: 'right' });
-  doc.setTextColor(...gray);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text('Date', W - 40, 62, { align: 'right' });
-  doc.setTextColor(...black);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text(today, W - 40, 74, { align: 'right' });
-
-  doc.setFillColor(...orange);
-  doc.rect(0, 82, W, 3, 'F');
-
-  doc.setDrawColor(...orange);
-  doc.setLineWidth(2);
-  doc.line(40, 105, 40, 125);
-  doc.setTextColor(...orange);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('SPONSOR', 50, 119);
-
-  doc.setTextColor(...black);
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.text(currentDonor.sponsor || '-', 40, 147);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...gray);
-  let sponsorY = 162;
-  if (currentDonor.email) { doc.text(currentDonor.email, 40, sponsorY); sponsorY += 13; }
-  if (currentDonor.contact) doc.text(currentDonor.contact, 40, sponsorY);
-
-  const COL = { desc: 52, prog: 240, due: 350, status: 435, amt: W - 52 };
-  const tableTop = 192;
-
-  doc.setFillColor(...orange);
-  doc.rect(40, tableTop, W - 80, 22, 'F');
-  doc.setTextColor(...white);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.text('DESCRIPTION', COL.desc, tableTop + 15);
-  doc.text('PROGRAM',     COL.prog, tableTop + 15);
-  doc.text('DUE DATE',    COL.due,  tableTop + 15);
-  doc.text('STATUS',      COL.status, tableTop + 15);
-  doc.text('AMOUNT',      COL.amt,  tableTop + 15, { align: 'right' });
-
-  let rowY = tableTop + 22;
-
-  const currentAmt = Number(currentDonor.amount || 0);
-  const tranches = Number(currentDonor.tranches) || 1;
-  const perTranche = Math.round(currentAmt / tranches);
-
-  doc.setFillColor(...lightOrange);
-  doc.rect(40, rowY, W - 80, 38, 'F');
-  doc.setDrawColor(...orange);
-  doc.setLineWidth(0.5);
-  doc.rect(40, rowY, W - 80, 38, 'S');
-
-  doc.setTextColor(...black);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('CURRENT', COL.desc, rowY + 13);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  const descLabel = currentDonor.description
-    ? String(currentDonor.description).slice(0, 30) + (currentDonor.description.length > 30 ? '…' : '')
-    : '-';
-  doc.setTextColor(...gray);
-  doc.text(descLabel, COL.desc, rowY + 25);
-  doc.setTextColor(...black);
-  doc.text(currentDonor.project || '-', COL.prog, rowY + 13);
-  doc.text(formatDate(currentDonor.dueDate), COL.due, rowY + 13);
-  doc.text(normalizeStatus(currentDonor.status), COL.status, rowY + 13);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`PHP ${currentAmt.toLocaleString()}`, COL.amt, rowY + 13, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...orange);
-  doc.setFontSize(7.5);
-  doc.text(
-    `${tranches} tranche${tranches > 1 ? 's' : ''} · PHP ${perTranche.toLocaleString()} each`,
-    COL.prog, rowY + 27
-  );
-  rowY += 38;
-
-  if (donorHistory && donorHistory.length > 0) {
-    doc.setFillColor(245, 230, 200);
-    doc.rect(40, rowY, W - 80, 18, 'F');
+    doc.setFillColor(...orange);
+    doc.rect(0, 82, W, 3, 'F');
+    doc.setDrawColor(...orange);
+    doc.setLineWidth(2);
+    doc.line(40, 105, 40, 125);
     doc.setTextColor(...orange);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.text('EDIT HISTORY (PREVIOUS VERSIONS — FOR REFERENCE ONLY)', COL.desc, rowY + 12);
-    rowY += 18;
+    doc.setFontSize(9);
+    doc.text('SPONSOR', 50, 119);
+    doc.setTextColor(...black);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(currentDonor.sponsor || '-', 40, 147);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...gray);
+    let sponsorY = 162;
+    if (currentDonor.email) { doc.text(currentDonor.email, 40, sponsorY); sponsorY += 13; }
+    if (currentDonor.contact) doc.text(currentDonor.contact, 40, sponsorY);
 
-    donorHistory.forEach((snap, idx) => {
-      if (idx % 2 === 0) { doc.setFillColor(245, 245, 245); } else { doc.setFillColor(255, 255, 255); }
-      doc.rect(40, rowY, W - 80, 24, 'F');
+    const COL = { desc: 52, prog: 240, due: 350, status: 435, amt: W - 52 };
+    const tableTop = 192;
+    doc.setFillColor(...orange);
+    doc.rect(40, tableTop, W - 80, 22, 'F');
+    doc.setTextColor(...white);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text('DESCRIPTION', COL.desc, tableTop + 15);
+    doc.text('PROGRAM',     COL.prog, tableTop + 15);
+    doc.text('DUE DATE',    COL.due,  tableTop + 15);
+    doc.text('STATUS',      COL.status, tableTop + 15);
+    doc.text('AMOUNT',      COL.amt,  tableTop + 15, { align: 'right' });
+
+    let rowY = tableTop + 22;
+    const currentAmt = Number(currentDonor.amount || 0);
+    const tranches = Number(currentDonor.tranches) || 1;
+    const perTranche = Math.round(currentAmt / tranches);
+
+    doc.setFillColor(...lightOrange);
+    doc.rect(40, rowY, W - 80, 38, 'F');
+    doc.setDrawColor(...orange);
+    doc.setLineWidth(0.5);
+    doc.rect(40, rowY, W - 80, 38, 'S');
+    doc.setTextColor(...black);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('CURRENT', COL.desc, rowY + 13);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    const descLabel = currentDonor.description
+      ? String(currentDonor.description).slice(0, 30) + (currentDonor.description.length > 30 ? '…' : '')
+      : '-';
+    doc.setTextColor(...gray);
+    doc.text(descLabel, COL.desc, rowY + 25);
+    doc.setTextColor(...black);
+    doc.text(currentDonor.project || '-', COL.prog, rowY + 13);
+    doc.text(formatDate(currentDonor.dueDate), COL.due, rowY + 13);
+    doc.text(normalizeStatus(currentDonor.status), COL.status, rowY + 13);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`PHP ${currentAmt.toLocaleString()}`, COL.amt, rowY + 13, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...orange);
+    doc.setFontSize(7.5);
+    doc.text(
+      `${tranches} tranche${tranches > 1 ? 's' : ''} · PHP ${perTranche.toLocaleString()} each`,
+      COL.prog, rowY + 27
+    );
+    rowY += 38;
+
+    if (donorHistory && donorHistory.length > 0) {
+      doc.setFillColor(245, 230, 200);
+      doc.rect(40, rowY, W - 80, 18, 'F');
       doc.setTextColor(...orange);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
-      doc.text(`v${donorHistory.length - idx}`, COL.desc, rowY + 16);
-      const snapDesc = snap.description
-        ? String(snap.description).slice(0, 25) + (snap.description.length > 25 ? '…' : '')
-        : '-';
-      doc.setTextColor(...gray);
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(8);
-      doc.text(snapDesc, COL.desc + 18, rowY + 16);
-      doc.setTextColor(100, 100, 100);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.text(snap.project || '-', COL.prog, rowY + 16);
-      doc.text(formatDate(snap.dueDate), COL.due, rowY + 16);
-      doc.text(normalizeStatus(snap.status), COL.status, rowY + 16);
-      doc.setTextColor(150, 150, 150);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`PHP ${Number(snap.amount || 0).toLocaleString()}`, COL.amt, rowY + 16, { align: 'right' });
-      doc.setDrawColor(220, 220, 220);
-      doc.setLineWidth(0.3);
-      doc.rect(40, rowY, W - 80, 24, 'S');
-      rowY += 24;
-      if (rowY > 750) { doc.addPage(); rowY = 40; }
-    });
-  }
+      doc.text('EDIT HISTORY (PREVIOUS VERSIONS — FOR REFERENCE ONLY)', COL.desc, rowY + 12);
+      rowY += 18;
+      donorHistory.forEach((snap, idx) => {
+        if (idx % 2 === 0) { doc.setFillColor(245, 245, 245); } else { doc.setFillColor(255, 255, 255); }
+        doc.rect(40, rowY, W - 80, 24, 'F');
+        doc.setTextColor(...orange);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text(`v${donorHistory.length - idx}`, COL.desc, rowY + 16);
+        const snapDesc = snap.description
+          ? String(snap.description).slice(0, 25) + (snap.description.length > 25 ? '…' : '')
+          : '-';
+        doc.setTextColor(...gray);
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        doc.text(snapDesc, COL.desc + 18, rowY + 16);
+        doc.setTextColor(100, 100, 100);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.text(snap.project || '-', COL.prog, rowY + 16);
+        doc.text(formatDate(snap.dueDate), COL.due, rowY + 16);
+        doc.text(normalizeStatus(snap.status), COL.status, rowY + 16);
+        doc.setTextColor(150, 150, 150);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`PHP ${Number(snap.amount || 0).toLocaleString()}`, COL.amt, rowY + 16, { align: 'right' });
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.3);
+        doc.rect(40, rowY, W - 80, 24, 'S');
+        rowY += 24;
+        if (rowY > 750) { doc.addPage(); rowY = 40; }
+      });
+    }
 
-  const historyTotal = donorHistory ? donorHistory.reduce((sum, snap) => sum + Number(snap.amount || 0), 0) : 0;
-  const overallTotal = currentAmt + historyTotal;
-  const totTop = rowY + 18;
+    const historyTotal = donorHistory ? donorHistory.reduce((sum, snap) => sum + Number(snap.amount || 0), 0) : 0;
+    const overallTotal = currentAmt + historyTotal;
+    const totTop = rowY + 18;
 
-  doc.setTextColor(...gray);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text('Current Record:', 340, totTop);
-  doc.setTextColor(...black);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`PHP ${currentAmt.toLocaleString()}`, W - 52, totTop, { align: 'right' });
-  doc.setTextColor(...gray);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text('Previous Versions:', 340, totTop + 14);
-  doc.setTextColor(100, 100, 100);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`PHP ${historyTotal.toLocaleString()}`, W - 52, totTop + 14, { align: 'right' });
-  doc.setDrawColor(220, 220, 220);
-  doc.setLineWidth(0.5);
-  doc.line(340, totTop + 22, W - 52, totTop + 22);
-  doc.setFillColor(...orange);
-  doc.rect(300, totTop + 28, W - 340, 26, 'F');
-  doc.setTextColor(...white);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('OVERALL TOTAL:', 312, totTop + 46);
-  doc.text(`PHP ${overallTotal.toLocaleString()}`, W - 52, totTop + 46, { align: 'right' });
-
-  const payTop = totTop + 72;
-  doc.setDrawColor(220, 220, 220);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(40, payTop, W - 80, 118, 4, 4, 'S');
-  doc.setDrawColor(...orange);
-  doc.setLineWidth(2);
-  doc.line(55, payTop + 16, 55, payTop + 34);
-  doc.setTextColor(...orange);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('RECORD DETAILS', 65, payTop + 28);
-
-  const detailFields = [
-    ['Type / Source:',  currentDonor.type || '-'],
-    ['Payment Date:',   formatDate(currentDonor.deliveryDate)],
-    ['Due Date:',       formatDate(currentDonor.dueDate)],
-    ['Beneficiaries:',  String(currentDonor.units ?? '-')],
-    ['Added By:',       currentDonor.created_by || '-'],
-  ];
-  if (linkedCampaign) detailFields.push(['Linked Campaign:', linkedCampaign.title]);
-
-  let detY = payTop + 50;
-  detailFields.forEach(([label, value]) => {
     doc.setTextColor(...gray);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text(label, 55, detY);
+    doc.text('Current Record:', 340, totTop);
     doc.setTextColor(...black);
     doc.setFont('helvetica', 'bold');
-    doc.text(String(value), 175, detY);
-    detY += 15;
-  });
+    doc.text(`PHP ${currentAmt.toLocaleString()}`, W - 52, totTop, { align: 'right' });
+    doc.setTextColor(...gray);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text('Previous Versions:', 340, totTop + 14);
+    doc.setTextColor(100, 100, 100);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`PHP ${historyTotal.toLocaleString()}`, W - 52, totTop + 14, { align: 'right' });
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.5);
+    doc.line(340, totTop + 22, W - 52, totTop + 22);
+    doc.setFillColor(...orange);
+    doc.rect(300, totTop + 28, W - 340, 26, 'F');
+    doc.setTextColor(...white);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('OVERALL TOTAL:', 312, totTop + 46);
+    doc.text(`PHP ${overallTotal.toLocaleString()}`, W - 52, totTop + 46, { align: 'right' });
 
-  doc.setFillColor(...orange);
-  doc.rect(0, 780, W, 61, 'F');
-  doc.setTextColor(...white);
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(9);
-  doc.text('Thank you for your generous support of quality education for every Filipino child.', W / 2, 800, { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text('Knowledge Channel Foundation  ·  finance@knowledgechannel.org  ·  www.knowledgechannel.org', W / 2, 820, { align: 'center' });
+    const payTop = totTop + 72;
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(40, payTop, W - 80, 118, 4, 4, 'S');
+    doc.setDrawColor(...orange);
+    doc.setLineWidth(2);
+    doc.line(55, payTop + 16, 55, payTop + 34);
+    doc.setTextColor(...orange);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('RECORD DETAILS', 65, payTop + 28);
 
-  const fileSafeName = String(currentDonor.project || currentDonor.sponsor || 'record').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  doc.save(`${fileSafeName}-record-summary.pdf`);
-};
+    const detailFields = [
+      ['Type / Source:',  currentDonor.type || '-'],
+      ['Payment Date:',   formatDate(currentDonor.deliveryDate)],
+      ['Due Date:',       formatDate(currentDonor.dueDate)],
+      ['Beneficiaries:',  String(currentDonor.units ?? '-')],
+      ['Added By:',       currentDonor.created_by || '-'],
+    ];
+    if (linkedCampaign) detailFields.push(['Linked Campaign:', linkedCampaign.title]);
+
+    let detY = payTop + 50;
+    detailFields.forEach(([label, value]) => {
+      doc.setTextColor(...gray);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(label, 55, detY);
+      doc.setTextColor(...black);
+      doc.setFont('helvetica', 'bold');
+      doc.text(String(value), 175, detY);
+      detY += 15;
+    });
+
+    doc.setFillColor(...orange);
+    doc.rect(0, 780, W, 61, 'F');
+    doc.setTextColor(...white);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(9);
+    doc.text('Thank you for your generous support of quality education for every Filipino child.', W / 2, 800, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text('Knowledge Channel Foundation  ·  finance@knowledgechannel.org  ·  www.knowledgechannel.org', W / 2, 820, { align: 'center' });
+
+    const fileSafeName = String(currentDonor.project || currentDonor.sponsor || 'record').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    doc.save(`${fileSafeName}-record-summary.pdf`);
+  };
 
   const campaignOptions = [
     { label: '— No linked campaign —', value: '' },
@@ -518,7 +524,7 @@ const handleDownloadSummary = () => {
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2">
             {paginatedSponsors.length === 0 && (
               <div className="py-12 text-center text-sm text-gray-400">No records found.</div>
             )}
@@ -528,12 +534,13 @@ const handleDownloadSummary = () => {
               const totalAmount = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
               return (
                 <div key={sponsorName} className="rounded-xl border border-gray-200 overflow-hidden">
+                  {/* ── Sponsor group header ── */}
                   <button
                     onClick={() => toggleGroup(sponsorName)}
                     className="w-full flex items-center justify-between px-4 py-1.5 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-8 w-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 text-sm font-bold shrink-0">
+                      <div className="h-7 w-7 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 text-xs font-bold shrink-0">
                         {sponsorName.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
@@ -550,7 +557,8 @@ const handleDownloadSummary = () => {
 
                   {!isCollapsed && (
                     <div className="divide-y divide-gray-100">
-                      <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-4 py-2 bg-white border-b border-gray-100">
+                      {/* ── Column headers ── */}
+                      <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-4 py-1 bg-white border-b border-gray-100">
                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Program</span>
                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Campaign</span>
                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-right">Amount</span>
@@ -644,15 +652,19 @@ const handleDownloadSummary = () => {
         </CardContent>
       </Card>
 
-      {/* Add / Edit Modal */}
+      {/* ── Add / Edit Modal ── */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentDonor ? 'Edit Record' : 'Add New Record'}>
         <form onSubmit={handleSubmit} className="flex flex-col" style={{ maxHeight: '70vh' }}>
           <div className="overflow-y-auto pr-1 flex-1 space-y-5">
             <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 space-y-4">
+
+              {/* Sponsor name */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Name of Sponsor</label>
                 <Input value={form.sponsor} onChange={setField('sponsor')} placeholder="Enter sponsor name" className="w-full" required />
               </div>
+
+              {/* Contact + Email */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Contact Number</label>
@@ -664,7 +676,7 @@ const handleDownloadSummary = () => {
                 </div>
               </div>
 
-              {/* ── Program field with "Others" expansion ── */}
+              {/* Program */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Program</label>
                 <Select
@@ -673,7 +685,6 @@ const handleDownloadSummary = () => {
                     setForm((prev) => ({
                       ...prev,
                       project: e.target.value,
-                      // Clear custom text when switching away from Others
                       projectOther: e.target.value !== 'Others' ? '' : prev.projectOther,
                     }));
                   }}
@@ -685,7 +696,6 @@ const handleDownloadSummary = () => {
                     { label: 'Others', value: 'Others' },
                   ]}
                 />
-                {/* Show text input only when "Others" is selected */}
                 {form.project === 'Others' && (
                   <div className="mt-2">
                     <Input
@@ -699,37 +709,71 @@ const handleDownloadSummary = () => {
                 )}
               </div>
 
+              {/* Linked Campaign */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
                   Linked Campaign <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
                 </label>
                 <Select value={form.campaign_id} onChange={setField('campaign_id')} options={campaignOptions} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Number of Beneficiaries</label>
-                  <Input type="number" value={form.units} onChange={setField('units')} placeholder="Enter number" />
+
+              {/* ── Number of Beneficiaries: split into count + label ── */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Number of Beneficiaries</label>
+                <div className="flex gap-2">
+                  {/* Number field */}
+                  <Input
+                    type="number"
+                    value={form.unitsCount}
+                    onChange={setField('unitsCount')}
+                    placeholder="0"
+                    className="w-24 shrink-0"
+                    min="0"
+                  />
+                  {/* Label / description field */}
+                  <Input
+                    value={form.unitsLabel}
+                    onChange={setField('unitsLabel')}
+                    placeholder="e.g. schools, episodes, ES, units…"
+                    className="flex-1"
+                  />
                 </div>
+                {/* Live preview */}
+                {(form.unitsCount || form.unitsLabel) && (
+                  <p className="mt-1.5 text-xs text-gray-400">
+                    Preview: <span className="font-medium text-gray-600">
+                      {[form.unitsCount, form.unitsLabel].filter(Boolean).join(' ')}
+                    </span>
+                  </p>
+                )}
+              </div>
+
+              {/* Payment Date + Due Date */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Date of Payment</label>
                   <Input type="date" value={form.deliveryDate} onChange={setField('deliveryDate')} />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Due Date</label>
                   <Input type="date" value={form.dueDate} onChange={setField('dueDate')} />
                 </div>
+              </div>
+
+              {/* Amount + Tranches */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Amount (₱)</label>
                   <Input type="number" value={form.amount} onChange={setField('amount')} placeholder="0" />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Number of Tranches</label>
                   <Input type="number" value={form.tranches} onChange={setField('tranches')} placeholder="Enter number" />
                 </div>
+              </div>
+
+              {/* Source of Funds + Status */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Source of Funds</label>
                   <Select value={form.type} onChange={setField('type')}
@@ -743,17 +787,19 @@ const handleDownloadSummary = () => {
                     ]}
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+                  <Select value={form.status} onChange={setField('status')}
+                    options={[
+                      { label: 'Active', value: 'Active' },
+                      { label: 'Completed', value: 'Completed' },
+                      { label: 'Inactive', value: 'Inactive' },
+                    ]}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
-                <Select value={form.status} onChange={setField('status')}
-                  options={[
-                    { label: 'Active', value: 'Active' },
-                    { label: 'Completed', value: 'Completed' },
-                    { label: 'Inactive', value: 'Inactive' },
-                  ]}
-                />
-              </div>
+
+              {/* Description */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Project Description</label>
                 <textarea
@@ -773,7 +819,7 @@ const handleDownloadSummary = () => {
         </form>
       </Modal>
 
-      {/* View Profile Modal */}
+      {/* ── View Profile Modal ── */}
       <Modal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} title="Record Details">
         {currentDonor && (() => {
           const linkedCampaign = getLinkedCampaign(currentDonor);
@@ -853,7 +899,7 @@ const handleDownloadSummary = () => {
                   <div className="grid grid-cols-2 gap-3">
                     {[
                       { label: 'Type',           value: currentDonor.type },
-                      { label: 'Schools / PMLs', value: currentDonor.units ?? '—' },
+                      { label: 'Beneficiaries',  value: currentDonor.units ?? '—' },
                       { label: 'Payment Date',   value: formatDate(currentDonor.deliveryDate) },
                       { label: 'Due Date',       value: formatDate(currentDonor.dueDate) },
                       { label: 'Tranches',       value: currentDonor.tranches ?? '—' },
