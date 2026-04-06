@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Plus, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Edit, Trash, Eye, Clock, ExternalLink, Paperclip, X, Upload } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Edit, Trash, Eye, Clock, ExternalLink, Paperclip, X, Upload, Download } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card, CardContent } from '../components/ui/Card';
@@ -55,7 +55,7 @@ export function Donors() {
   const [form, setForm] = useState(blankForm);
   const setField = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  // Attachments: [{ id, file, title }]
+  // Attachments: [{ id, file, title, name, size, url }]
   const [attachments, setAttachments] = useState([]);
   const fileInputRef = useRef(null);
 
@@ -104,8 +104,8 @@ export function Donors() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const getFileIcon = (file) => {
-    const ext = (file.name || '').split('.').pop().toLowerCase();
+  const getFileIcon = (name) => {
+    const ext = (name || '').split('.').pop().toLowerCase();
     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return '🖼️';
     if (ext === 'pdf') return '📄';
     if (['doc', 'docx'].includes(ext)) return '📝';
@@ -207,7 +207,18 @@ export function Donors() {
       status:       normalizeStatus(donor.status),
       description:  donor.description  || '',
     });
-    setAttachments([]);
+    // Load existing attachments from donor record (metadata only, no file object)
+    setAttachments(
+      (donor.attachments || []).map((a) => ({
+        id: a.id,
+        file: null,        // no File object for existing saved attachments
+        title: a.title,
+        name: a.name,
+        size: a.size,
+        url: a.url || null,
+        existing: true,    // flag: already saved
+      }))
+    );
     setModalPage(1);
     fetchDonorHistory(donor.id).then(setDonorHistory);
     setIsModalOpen(true);
@@ -246,6 +257,10 @@ export function Donors() {
       id: `${Date.now()}-${Math.random()}`,
       file,
       title: file.name.replace(/\.[^/.]+$/, ''),
+      name: file.name,
+      size: file.size,
+      url: URL.createObjectURL(file),
+      existing: false,
     }));
     setAttachments((prev) => [...prev, ...newAttachments]);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -259,6 +274,16 @@ export function Donors() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Serialize attachments — strip the File object, keep metadata + url
+    const serializedAttachments = attachments.map((a) => ({
+      id: a.id,
+      title: a.title,
+      name: a.name || (a.file ? a.file.name : ''),
+      size: a.size || (a.file ? a.file.size : 0),
+      url: a.url || null,
+    }));
+
     const newDonor = {
       id:           currentDonor ? currentDonor.id : undefined,
       sponsor:      form.sponsor,
@@ -274,7 +299,9 @@ export function Donors() {
       type:         form.type,
       status:       normalizeStatus(form.status),
       description:  form.description  || null,
+      attachments:  serializedAttachments,
     };
+
     if (currentDonor) {
       await saveDonorSnapshot(currentDonor.id, { ...currentDonor });
       await updateDonor(newDonor);
@@ -779,14 +806,15 @@ export function Donors() {
                     {attachments.map((att) => (
                       <div key={att.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
                         <div className="h-9 w-9 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-lg shrink-0 shadow-sm">
-                          {getFileIcon(att.file)}
+                          {getFileIcon(att.name || (att.file ? att.file.name : ''))}
                         </div>
                         <div className="flex-1 min-w-0 space-y-1.5">
                           <Input value={att.title} onChange={(e) => handleAttachmentTitleChange(att.id, e.target.value)}
                             placeholder="Enter file title..." className="w-full text-sm" />
                           <p className="text-xs text-gray-400 truncate pl-1">
-                            {att.file.name}
-                            {att.file.size ? <span className="ml-2 text-gray-300">· {formatFileSize(att.file.size)}</span> : null}
+                            {att.name || (att.file ? att.file.name : '')}
+                            {att.size ? <span className="ml-2 text-gray-300">· {formatFileSize(att.size)}</span> : null}
+                            {att.existing && <span className="ml-2 text-emerald-500 font-medium">· saved</span>}
                           </p>
                         </div>
                         <button type="button" onClick={() => handleRemoveAttachment(att.id)}
@@ -831,6 +859,7 @@ export function Donors() {
       <Modal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} title="Record Details">
         {currentDonor && (() => {
           const linkedCampaign = getLinkedCampaign(currentDonor);
+          const savedAttachments = currentDonor.attachments || [];
           return (
             <div className="flex flex-col" style={{ maxHeight: '80vh' }}>
               <div className="flex items-center gap-4 pb-3">
@@ -852,18 +881,23 @@ export function Donors() {
               </div>
 
               <div className="flex border-b border-gray-200 mb-4">
-                {['details', 'history'].map((tab) => (
+                {['details', 'attachments', 'history'].map((tab) => (
                   <button key={tab} onClick={() => setProfileTab(tab)}
                     className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${profileTab === tab ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                     {tab === 'history' && <Clock className="h-3.5 w-3.5" />}
+                    {tab === 'attachments' && <Paperclip className="h-3.5 w-3.5" />}
                     {tab.charAt(0).toUpperCase() + tab.slice(1)}
                     {tab === 'history' && donorHistory.length > 0 && (
                       <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-gray-200 text-[10px] font-bold text-gray-600">{donorHistory.length}</span>
+                    )}
+                    {tab === 'attachments' && savedAttachments.length > 0 && (
+                      <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-gray-200 text-[10px] font-bold text-gray-600">{savedAttachments.length}</span>
                     )}
                   </button>
                 ))}
               </div>
 
+              {/* ── Details Tab ── */}
               {profileTab === 'details' && (
                 <div className="overflow-y-auto flex-1 space-y-3 pr-1">
                   <div className="grid grid-cols-2 gap-3">
@@ -917,6 +951,49 @@ export function Donors() {
                 </div>
               )}
 
+              {/* ── Attachments Tab ── */}
+              {profileTab === 'attachments' && (
+                <div className="overflow-y-auto flex-1 pr-1">
+                  {savedAttachments.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                        <Paperclip className="h-5 w-5 text-gray-300" />
+                      </div>
+                      <p className="text-sm text-gray-400">No attachments for this record.</p>
+                      <p className="text-xs text-gray-300 mt-1">Edit the record to add files.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                        {savedAttachments.length} file{savedAttachments.length !== 1 ? 's' : ''} attached
+                      </p>
+                      {savedAttachments.map((att) => (
+                        <div key={att.id} className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-200 shadow-sm hover:border-gray-300 transition-colors group">
+                          <div className="h-10 w-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-xl shrink-0">
+                            {getFileIcon(att.name)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{att.title || att.name}</p>
+                            <p className="text-xs text-gray-400 truncate mt-0.5">
+                              {att.name}
+                              {att.size ? <span className="ml-2">· {formatFileSize(att.size)}</span> : null}
+                            </p>
+                          </div>
+                          {att.url && (
+                            <a href={att.url} download={att.name} target="_blank" rel="noreferrer"
+                              className="p-2 rounded-lg text-gray-400 hover:text-primary-600 hover:bg-primary-50 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                              title="Download">
+                              <Download className="h-4 w-4" />
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── History Tab ── */}
               {profileTab === 'history' && (
                 <div className="overflow-y-auto flex-1 space-y-3 pr-1">
                   {donorHistory.length === 0 ? (

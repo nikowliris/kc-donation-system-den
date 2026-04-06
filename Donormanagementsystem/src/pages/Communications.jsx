@@ -335,17 +335,11 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
     if (!selectedCampaign) return;
     const doc = new jsPDF();
     const pageW = doc.internal.pageSize.getWidth();
-
-    // ── HEADER: same style as billing statement ──────────────────────────────
-    // Top orange bar
     doc.setFillColor(230, 126, 0);
     doc.rect(0, 0, pageW, 3, 'F');
-    // White header background
     doc.setFillColor(255, 255, 255);
     doc.rect(0, 3, pageW, 36, 'F');
-    // Logo on the left (same as billing statement)
     doc.addImage(kcLogo, 'PNG', 12, 7, 22, 22);
-    // Title & org info
     doc.setTextColor(20, 20, 20);
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
@@ -356,7 +350,6 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
     doc.text('Knowledge Channel Foundation, Inc.', 38, 22);
     doc.text('Congressional Ave., Quezon City, Metro Manila', 38, 27);
     doc.text('programs@knowledgechannel.org', 38, 32);
-    // Report number & date on the right
     const rptNo = `PR-${Date.now().toString().slice(-6)}`;
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
@@ -374,13 +367,10 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
     doc.setTextColor(20, 20, 20);
     doc.setFontSize(9);
     doc.text(formatDate(reportDate), pageW - 14, 33, { align: 'right' });
-    // Double divider stripe (same as billing)
     doc.setFillColor(255, 193, 7);
     doc.rect(0, 39, pageW, 2, 'F');
     doc.setFillColor(230, 126, 0);
     doc.rect(0, 41, pageW, 1, 'F');
-
-    // ── PROGRAM DETAILS ──────────────────────────────────────────────────────
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(180, 100, 0);
@@ -389,29 +379,17 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
     doc.setLineWidth(0.4);
     doc.line(14, 54, 56, 54);
     doc.setLineWidth(0.2);
-
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(20, 20, 20);
     doc.text(selectedCampaign.title || '—', 14, 63);
-
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(80, 80, 80);
     let detailY = 71;
-    if (selectedCampaign.department) {
-      doc.text(`Department: ${selectedCampaign.department}`, 14, detailY);
-      detailY += 6;
-    }
-    if (selectedCampaign.sponsor) {
-      doc.text(`Lead Sponsor: ${selectedCampaign.sponsor}`, 14, detailY);
-      detailY += 6;
-    }
-    if (period) {
-      doc.text(`Reporting Period: ${period}`, 14, detailY);
-      detailY += 6;
-    }
-    // Status badge-style on right
+    if (selectedCampaign.department) { doc.text(`Department: ${selectedCampaign.department}`, 14, detailY); detailY += 6; }
+    if (selectedCampaign.sponsor)    { doc.text(`Lead Sponsor: ${selectedCampaign.sponsor}`, 14, detailY); detailY += 6; }
+    if (period)                      { doc.text(`Reporting Period: ${period}`, 14, detailY); detailY += 6; }
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(100, 100, 100);
@@ -422,17 +400,13 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
     doc.setFontSize(7.5);
     doc.setTextColor(255, 255, 255);
     doc.text(selectedCampaign.status || 'Active', pageW - 26, 60.5, { align: 'center' });
-
     if (selectedCampaign.startDate || selectedCampaign.endDate) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(100, 100, 100);
-      const dur = `${formatDate(selectedCampaign.startDate)} — ${formatDate(selectedCampaign.endDate)}`;
-      doc.text(`Duration: ${dur}`, 14, detailY);
+      doc.text(`Duration: ${formatDate(selectedCampaign.startDate)} — ${formatDate(selectedCampaign.endDate)}`, 14, detailY);
       detailY += 6;
     }
-
-    // ── FUNDING PROGRESS TABLE (same orange header style as billing) ─────────
     const tableTop = Math.max(detailY + 4, 82);
     doc.setFillColor(255, 193, 7);
     doc.rect(14, tableTop, pageW - 28, 8, 'F');
@@ -440,24 +414,17 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
     doc.setFontSize(7.5);
     doc.setTextColor(80, 40, 0);
     doc.text('FUNDING PROGRESS', 17, tableTop + 5.5);
-
     const rowTop = tableTop + 8;
     doc.setFillColor(255, 252, 240);
     doc.rect(14, rowTop, pageW - 28, 20, 'F');
     doc.setDrawColor(240, 200, 100);
     doc.rect(14, rowTop, pageW - 28, 20, 'S');
-
-    // Progress bar inside the row
-    const barX = 17;
-    const barY = rowTop + 4;
-    const barW = pageW - 34;
-    const barH = 5;
+    const barX = 17; const barY = rowTop + 4; const barW = pageW - 34; const barH = 5;
     doc.setFillColor(230, 220, 200);
     doc.roundedRect(barX, barY, barW, barH, 1.5, 1.5, 'F');
     const fill = Math.max(3, (barW * pct) / 100);
     doc.setFillColor(230, 126, 0);
     doc.roundedRect(barX, barY, fill, barH, 1.5, 1.5, 'F');
-
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(20, 20, 20);
@@ -466,10 +433,7 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(180, 100, 0);
     doc.text(`${pct}% Funded`, pageW - 16, rowTop + 15, { align: 'right' });
-
-    // ── LINKED SPONSORS TABLE ────────────────────────────────────────────────
     let y = rowTop + 28;
-
     if (linkedDonors.length > 0) {
       doc.setFillColor(255, 193, 7);
       doc.rect(14, y, pageW - 28, 8, 'F');
@@ -481,18 +445,12 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
       doc.text('STATUS', 126, y + 5.5);
       doc.text('AMOUNT', pageW - 16, y + 5.5, { align: 'right' });
       y += 8;
-
       linkedDonors.slice(0, 10).forEach((d, i) => {
-        if (i % 2 === 0) {
-          doc.setFillColor(255, 252, 240);
-        } else {
-          doc.setFillColor(255, 255, 255);
-        }
+        doc.setFillColor(i % 2 === 0 ? 255 : 255, i % 2 === 0 ? 252 : 255, i % 2 === 0 ? 240 : 255);
         doc.rect(14, y, pageW - 28, 8, 'F');
         doc.setDrawColor(240, 200, 100);
         doc.setLineWidth(0.1);
         doc.rect(14, y, pageW - 28, 8, 'S');
-
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8.5);
         doc.setTextColor(20, 20, 20);
@@ -503,7 +461,6 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
         doc.text(`PHP ${Number(d.amount || 0).toLocaleString()}`, pageW - 16, y + 5.5, { align: 'right' });
         y += 8;
       });
-
       if (linkedDonors.length > 10) {
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(7.5);
@@ -522,14 +479,10 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
       doc.text('No linked sponsors found for this program.', 17, y + 6.5);
       y += 10;
     }
-
-    // ── NARRATIVE SECTIONS ───────────────────────────────────────────────────
     const addNarrativeSection = (title, content) => {
       if (!content?.trim()) return;
       y += 6;
       if (y > 255) { doc.addPage(); y = 20; }
-
-      // Orange section label
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(180, 100, 0);
@@ -539,7 +492,6 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
       doc.line(14, y + 2, 14 + title.length * 2.1, y + 2);
       doc.setLineWidth(0.2);
       y += 7;
-
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(60, 60, 60);
@@ -548,13 +500,10 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
       doc.text(lines, 14, y);
       y += lines.length * 5;
     };
-
     addNarrativeSection('HIGHLIGHTS & ACCOMPLISHMENTS', highlights);
     addNarrativeSection('CHALLENGES', challenges);
     addNarrativeSection('NEXT STEPS', nextSteps);
     if (selectedCampaign.description) addNarrativeSection('PROGRAM DESCRIPTION', selectedCampaign.description);
-
-    // ── FOOTER: same orange/yellow stripe as billing ─────────────────────────
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
@@ -568,7 +517,6 @@ function ProgressReportModal({ donors, campaigns, onClose }) {
       doc.text('Thank you for your generous support of quality education for every Filipino child.', pageW / 2, 287, { align: 'center' });
       doc.text(`Knowledge Channel Foundation  ·  programs@knowledgechannel.org  ·  www.knowledgechannel.org  ·  Page ${i} of ${totalPages}`, pageW / 2, 293, { align: 'center' });
     }
-
     const safeName = String(selectedCampaign.title || 'program').toLowerCase().replace(/[^a-z0-9]+/g, '-');
     doc.save(`progress-report-${safeName}-${rptNo}.pdf`);
     setGenerated(true);
@@ -1034,9 +982,17 @@ export function Communications() {
                       <p className="text-xs text-gray-400 line-clamp-2 mt-0.5">{template.body}</p>
                     </div>
                   )}
+                  {/* ── UPDATED: clickable mail icon ── */}
                   <div className="flex justify-between items-center text-xs text-gray-500 border-t pt-3">
                     <span>Last edited: {template.lastEdited}</span>
-                    <Mail className="h-3 w-3" />
+                    <a
+                      href={`mailto:?subject=${encodeURIComponent(template.subject)}&body=${encodeURIComponent(template.body)}`}
+                      onClick={(e) => e.stopPropagation()}
+                      title="Compose email with this template"
+                      className="text-gray-400 hover:text-blue-600 transition-colors"
+                    >
+                      <Mail className="h-3 w-3" />
+                    </a>
                   </div>
                 </div>
               </CardContent>
