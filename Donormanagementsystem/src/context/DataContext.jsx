@@ -16,10 +16,6 @@ export const DataProvider = ({ children }) => {
   const [grants, setGrants] = useState([]);
   const [causeMarketing, setCauseMarketing] = useState([]);
   const [donations, setDonations] = useState([]);
-  const [commTemplates, setCommTemplates] = useState([]);
-  const [commWorkflows, setCommWorkflows] = useState([]);
-  const [commHistory, setCommHistory] = useState([]);
-  const [contactMessages, setContactMessages] = useState([]);
 
   // -------------
   // DONORS
@@ -70,32 +66,19 @@ export const DataProvider = ({ children }) => {
     } catch (err) { console.error(err); alert("Failed to delete record."); }
   };
 
-  // ── Save a snapshot BEFORE an edit ────────────────────────────────────────
-  // No try/catch — errors will surface visibly so they are not silently swallowed.
   const saveDonorSnapshot = async (donorId, snapshot) => {
     const tok = getToken();
-
-    console.log("▶️ saveDonorSnapshot — donorId:", donorId, "snapshot:", snapshot);
-
     const res = await fetch(`${API_BASE}/donors/${donorId}/history`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${tok}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
       body: JSON.stringify(snapshot),
     });
-
-    const text = await res.text();
-    console.log("📦 snapshot response:", res.status, text);
-
     if (!res.ok) {
-      console.error("❌ saveDonorSnapshot failed:", res.status, text);
-      // Still non-fatal — don't block the save, but log clearly
+      const text = await res.text();
+      console.error("saveDonorSnapshot failed:", res.status, text);
     }
   };
 
-  // ── Fetch full edit history for a single donor ─────────────────────────────
   const fetchDonorHistory = async (donorId) => {
     try {
       const tok = getToken();
@@ -110,7 +93,6 @@ export const DataProvider = ({ children }) => {
     }
   };
 
-  // ── Fetch donors linked to a campaign ─────────────────────────────────────
   const fetchCampaignDonors = async (campaignId) => {
     try {
       const tok = getToken();
@@ -404,117 +386,9 @@ export const DataProvider = ({ children }) => {
     } catch (err) { console.error(err); alert("Failed to delete donation."); }
   };
 
-  // -------------
-  // COMMUNICATIONS
-  // -------------
-  const fetchCommTemplates = async () => {
-    try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/communications/templates`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error(`Fetch templates failed: ${res.status}`);
-      setCommTemplates(await res.json());
-    } catch (err) { console.error(err); }
-  };
-
-  const addCommTemplate = async (payload) => {
-    try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/communications/templates`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`Add template failed: ${res.status}`);
-      await fetchCommTemplates();
-    } catch (err) { console.error(err); alert("Failed to create template."); }
-  };
-
-  const updateCommTemplate = async (payload) => {
-    try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/communications/templates/${payload.id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`Update template failed: ${res.status}`);
-      await fetchCommTemplates();
-    } catch (err) { console.error(err); alert("Failed to update template."); }
-  };
-
-  const deleteCommTemplate = async (id) => {
-    try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/communications/templates/${id}`, {
-        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(`Delete template failed: ${res.status}`);
-      await fetchCommTemplates();
-    } catch (err) { console.error(err); alert("Failed to delete template."); }
-  };
-
-  const fetchCommWorkflows = async () => {
-    try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/communications/workflows`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error(`Fetch workflows failed: ${res.status}`);
-      setCommWorkflows(await res.json());
-    } catch (err) { console.error(err); }
-  };
-
-  const updateCommWorkflow = async (payload) => {
-    try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/communications/workflows/${payload.id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`Update workflow failed: ${res.status}`);
-      await fetchCommWorkflows();
-    } catch (err) { console.error(err); alert("Failed to update workflow."); }
-  };
-
-  const fetchCommHistory = async () => {
-    try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/communications/history`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error(`Fetch history failed: ${res.status}`);
-      setCommHistory(await res.json());
-    } catch (err) { console.error(err); }
-  };
-
-  // -------------
-  // CONTACT MESSAGES
-  // -------------
-  const fetchContactMessages = async () => {
-    try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/messages`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error(`Fetch messages failed: ${res.status}`);
-      setContactMessages(await res.json());
-    } catch (err) { console.error(err); }
-  };
-
-  const markMessageRead = async (id) => {
-    try {
-      const token = getToken();
-      await fetch(`${API_BASE}/messages/${id}/read`, {
-        method: "PATCH", headers: { Authorization: `Bearer ${token}` },
-      });
-      setContactMessages((prev) => prev.map((m) => m.id === id ? { ...m, status: "Read" } : m));
-    } catch (err) { console.error(err); }
-  };
-
-  const deleteContactMessage = async (id) => {
-    try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/messages/${id}`, {
-        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(`Delete message failed: ${res.status}`);
-      setContactMessages((prev) => prev.filter((m) => m.id !== id));
-    } catch (err) { console.error(err); alert("Failed to delete message."); }
-  };
-
-  // fetch all on login
+  // ── fetch all on login ─────────────────────────────────────────────────────
+  // Removed: fetchCommTemplates, fetchCommWorkflows, fetchCommHistory,
+  //          fetchContactMessages — these routes don't exist on the backend yet
   useEffect(() => {
     if (!token) return;
     fetchDonors();
@@ -523,16 +397,11 @@ export const DataProvider = ({ children }) => {
     fetchGrants();
     fetchCauseMarketing();
     fetchDonations();
-    fetchCommTemplates();
-    fetchCommWorkflows();
-    fetchCommHistory();
   }, [token]);
 
   const value = useMemo(
     () => ({
       donors, campaigns, events, grants, causeMarketing, donations,
-      commTemplates, commWorkflows, commHistory,
-      contactMessages,
 
       getCampaignDonorTotal: (campaignId) =>
         donors
@@ -558,13 +427,8 @@ export const DataProvider = ({ children }) => {
       fetchGrants, addGrant, updateGrant, deleteGrant,
       fetchCauseMarketing, addCauseMarketing, updateCauseMarketing, deleteCauseMarketing,
       fetchDonations, addDonation, updateDonation, deleteDonation,
-      fetchCommTemplates, addCommTemplate, updateCommTemplate, deleteCommTemplate,
-      fetchCommWorkflows, updateCommWorkflow,
-      fetchCommHistory,
-      fetchContactMessages, markMessageRead, deleteContactMessage,
     }),
-    [donors, campaigns, events, grants, causeMarketing, donations,
-     commTemplates, commWorkflows, commHistory, contactMessages]
+    [donors, campaigns, events, grants, causeMarketing, donations]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
