@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, Legend
 } from 'recharts';
-import { Download, Calendar, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Download, Calendar, Filter, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Select } from '../components/ui/Select';
@@ -34,11 +34,39 @@ const formatDate = (val) => {
 export function Reports() {
   const { donors } = useData();
 
+  // ── Global chart filters ──────────────────────────────────────────────────
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
+
+  // ── Per-column table filters ──────────────────────────────────────────────
+  const [colFilters, setColFilters] = useState({
+    project:      '',
+    sponsor:      '',
+    amount:       '',
+    type:         'All',
+    status:       'All',
+    deliveryDate: '',
+    dueDate:      '',
+  });
+
+  const setCol = (key) => (e) => {
+    setColFilters((prev) => ({ ...prev, [key]: e.target.value }));
+    setCurrentPage(1);
+  };
+
+  const hasActiveColFilters = Object.entries(colFilters).some(([k, v]) =>
+    k === 'type' || k === 'status' ? v !== 'All' : v !== ''
+  );
+
+  const clearColFilters = () => {
+    setColFilters({ project: '', sponsor: '', amount: '', type: 'All', status: 'All', deliveryDate: '', dueDate: '' });
+    setCurrentPage(1);
+  };
+
   const [currentPage, setCurrentPage] = useState(1);
 
+  // ── Filtered donors for charts ────────────────────────────────────────────
   const filteredDonors = useMemo(() => {
     return donors.filter((d) => {
       const date = new Date(d.deliveryDate);
@@ -49,10 +77,38 @@ export function Reports() {
     });
   }, [donors, startDate, endDate, typeFilter]);
 
-  // Reset to page 1 when filters change
-  const totalPages = Math.max(1, Math.ceil(filteredDonors.length / PAGE_SIZE));
+  // ── Filtered donors for table (applies col filters on top of chart filters) ─
+  const tableFilteredDonors = useMemo(() => {
+    return filteredDonors.filter((d) => {
+      const { project, sponsor, amount, type, status, deliveryDate, dueDate } = colFilters;
+
+      if (project && !String(d.project || '').toLowerCase().includes(project.toLowerCase())) return false;
+      if (sponsor && !String(d.sponsor || '').toLowerCase().includes(sponsor.toLowerCase())) return false;
+      if (amount) {
+        const amt = Number(d.amount || 0);
+        // support ">500000", "<100000", or plain number match
+        const gtMatch = amount.match(/^>\s*(\d+)$/);
+        const ltMatch = amount.match(/^<\s*(\d+)$/);
+        const eqMatch = amount.match(/^\d+$/);
+        if (gtMatch && !(amt > Number(gtMatch[1]))) return false;
+        if (ltMatch && !(amt < Number(ltMatch[1]))) return false;
+        if (eqMatch && !String(amt).includes(amount)) return false;
+        if (!gtMatch && !ltMatch && !eqMatch) {
+          if (!String(amt).includes(amount.replace(/[^0-9]/g, ''))) return false;
+        }
+      }
+      if (type !== 'All' && d.type !== type) return false;
+      if (status !== 'All' && normalizeStatus(d.status) !== status) return false;
+      if (deliveryDate && !(d.deliveryDate || '').includes(deliveryDate)) return false;
+      if (dueDate && !(d.dueDate || '').includes(dueDate)) return false;
+
+      return true;
+    });
+  }, [filteredDonors, colFilters]);
+
+  const totalPages = Math.max(1, Math.ceil(tableFilteredDonors.length / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
-  const paginatedDonors = filteredDonors.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const paginatedDonors = tableFilteredDonors.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const sponTotal = filteredDonors.reduce((s, d) => s + Number(d.amount || 0), 0);
   const sponActive = filteredDonors.filter((d) => normalizeStatus(d.status) === 'Active').length;
@@ -116,7 +172,6 @@ export function Reports() {
     const rptNo = `RPT-${Date.now().toString().slice(-6)}`;
     const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    // ── HEADER ──────────────────────────────────────────────────────────────
     doc.setFillColor(...orange);
     doc.rect(0, 0, pageW, 3, 'F');
     doc.setFillColor(255, 255, 255);
@@ -132,7 +187,6 @@ export function Reports() {
     doc.text('Knowledge Channel Foundation, Inc.', 38, 22);
     doc.text('Congressional Ave., Quezon City, Metro Manila', 38, 27);
     doc.text('finance@knowledgechannel.org', 38, 32);
-
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...gray);
@@ -149,14 +203,11 @@ export function Reports() {
     doc.setTextColor(...black);
     doc.setFontSize(9);
     doc.text(today, pageW - 14, 33, { align: 'right' });
-
-    // Double divider
     doc.setFillColor(...yellow);
     doc.rect(0, 39, pageW, 2, 'F');
     doc.setFillColor(...orange);
     doc.rect(0, 41, pageW, 1, 'F');
 
-    // ── FILTERS APPLIED ─────────────────────────────────────────────────────
     let y = 52;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
@@ -174,7 +225,6 @@ export function Reports() {
     doc.text(`Sponsor Type: ${typeFilter}`, pageW / 2, y);
     y += 5;
 
-    // ── SUMMARY STATS ────────────────────────────────────────────────────────
     y += 6;
     doc.setFillColor(...yellow);
     doc.rect(14, y, pageW - 28, 8, 'F');
@@ -210,7 +260,6 @@ export function Reports() {
     });
     y += 28;
 
-    // ── BY PROGRAM TABLE ─────────────────────────────────────────────────────
     doc.setFillColor(...yellow);
     doc.rect(14, y, pageW - 28, 8, 'F');
     doc.setFont('helvetica', 'bold');
@@ -225,9 +274,7 @@ export function Reports() {
       const k = d.project || 'Unknown';
       programMap.set(k, (programMap.get(k) || 0) + Number(d.amount || 0));
     });
-    const programRows = Array.from(programMap.entries()).sort((a, b) => b[1] - a[1]);
-
-    programRows.forEach(([prog, amt], i) => {
+    Array.from(programMap.entries()).sort((a, b) => b[1] - a[1]).forEach(([prog, amt], i) => {
       if (y > 265) { doc.addPage(); y = 20; }
       doc.setFillColor(i % 2 === 0 ? 255 : 250, i % 2 === 0 ? 252 : 248, i % 2 === 0 ? 240 : 235);
       doc.rect(14, y, pageW - 28, 8, 'F');
@@ -243,7 +290,6 @@ export function Reports() {
       y += 8;
     });
 
-    // ── BY TYPE TABLE ────────────────────────────────────────────────────────
     y += 6;
     if (y > 240) { doc.addPage(); y = 20; }
     doc.setFillColor(...yellow);
@@ -280,7 +326,6 @@ export function Reports() {
       y += 8;
     });
 
-    // ── RECORDS TABLE ────────────────────────────────────────────────────────
     y += 6;
     if (y > 220) { doc.addPage(); y = 20; }
     doc.setFillColor(...yellow);
@@ -289,24 +334,14 @@ export function Reports() {
     doc.setFontSize(7.5);
     doc.setTextColor(80, 40, 0);
 
-    // Fixed column positions — spread evenly to avoid overlap
-    const COL = {
-      sponsor:  14,
-      program:  55,
-      type:     102,
-      status:   122,
-      date:     145,
-      dueDate:  168,
-      amount:   pageW - 14,
-    };
-
-    doc.text('SPONSOR',      COL.sponsor + 2,  y + 5.5);
-    doc.text('PROGRAM',      COL.program + 2,  y + 5.5);
-    doc.text('TYPE',         COL.type + 2,     y + 5.5);
-    doc.text('STATUS',       COL.status + 2,   y + 5.5);
-    doc.text('DEL. DATE',    COL.date + 2,     y + 5.5);
-    doc.text('DUE DATE',     COL.dueDate + 2,  y + 5.5);
-    doc.text('AMOUNT',       COL.amount,       y + 5.5, { align: 'right' });
+    const COL = { sponsor: 14, program: 55, type: 102, status: 122, date: 145, dueDate: 168, amount: pageW - 14 };
+    doc.text('SPONSOR', COL.sponsor + 2, y + 5.5);
+    doc.text('PROGRAM', COL.program + 2, y + 5.5);
+    doc.text('TYPE', COL.type + 2, y + 5.5);
+    doc.text('STATUS', COL.status + 2, y + 5.5);
+    doc.text('DEL. DATE', COL.date + 2, y + 5.5);
+    doc.text('DUE DATE', COL.dueDate + 2, y + 5.5);
+    doc.text('AMOUNT', COL.amount, y + 5.5, { align: 'right' });
     y += 8;
 
     filteredDonors.forEach((d, i) => {
@@ -319,18 +354,17 @@ export function Reports() {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(...black);
-      doc.text(String(d.sponsor  || '—').substring(0, 18), COL.sponsor + 2,  y + 5);
-      doc.text(String(d.project  || '—').substring(0, 20), COL.program + 2,  y + 5);
-      doc.text(String(d.type     || '—').substring(0, 10), COL.type + 2,     y + 5);
-      doc.text(normalizeStatus(d.status).substring(0, 10), COL.status + 2,   y + 5);
-      doc.text(d.deliveryDate ? String(d.deliveryDate).slice(0, 10) : '—',   COL.date + 2,    y + 5);
-      doc.text(d.dueDate      ? String(d.dueDate).slice(0, 10)      : '—',   COL.dueDate + 2, y + 5);
+      doc.text(String(d.sponsor || '—').substring(0, 18), COL.sponsor + 2, y + 5);
+      doc.text(String(d.project || '—').substring(0, 20), COL.program + 2, y + 5);
+      doc.text(String(d.type || '—').substring(0, 10), COL.type + 2, y + 5);
+      doc.text(normalizeStatus(d.status).substring(0, 10), COL.status + 2, y + 5);
+      doc.text(d.deliveryDate ? String(d.deliveryDate).slice(0, 10) : '—', COL.date + 2, y + 5);
+      doc.text(d.dueDate ? String(d.dueDate).slice(0, 10) : '—', COL.dueDate + 2, y + 5);
       doc.setFont('helvetica', 'bold');
       doc.text(`PHP ${Number(d.amount || 0).toLocaleString()}`, COL.amount, y + 5, { align: 'right' });
       y += 7;
     });
 
-    // ── TOTAL ROW ─────────────────────────────────────────────────────────
     if (y > 265) { doc.addPage(); y = 20; }
     doc.setFillColor(...orange);
     doc.rect(14, y, pageW - 28, 9, 'F');
@@ -339,9 +373,7 @@ export function Reports() {
     doc.setTextColor(...white);
     doc.text('TOTAL', COL.sponsor + 2, y + 6);
     doc.text(`PHP ${sponTotal.toLocaleString()}`, COL.amount, y + 6, { align: 'right' });
-    y += 9;
 
-    // ── FOOTER on every page ─────────────────────────────────────────────
     const totalPdfPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPdfPages; i++) {
       doc.setPage(i);
@@ -359,6 +391,10 @@ export function Reports() {
     doc.save(`sponsorship-report-${rptNo}.pdf`);
   };
 
+  // Unique values for dropdowns
+  const uniqueTypes = useMemo(() => [...new Set(donors.map((d) => d.type).filter(Boolean))].sort(), [donors]);
+  const uniqueStatuses = ['Active', 'Completed', 'Inactive'];
+
   return (
     <div className="space-y-6">
 
@@ -373,7 +409,7 @@ export function Reports() {
         </Button>
       </div>
 
-      {/* ─── FILTERS ─────────────────────────────────────────────────────────── */}
+      {/* ─── GLOBAL FILTERS ─────────────────────────────────────────────────── */}
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-4 items-center">
@@ -403,9 +439,7 @@ export function Reports() {
                 ]}
               />
             </div>
-            <Button variant="secondary" onClick={handleFilterReset}>
-              Reset
-            </Button>
+            <Button variant="secondary" onClick={handleFilterReset}>Reset</Button>
           </div>
         </CardContent>
       </Card>
@@ -471,8 +505,6 @@ export function Reports() {
 
       {/* ─── CHARTS ROW ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Sponsorships by Program */}
         <Card>
           <CardHeader><CardTitle>Sponsorships by Program</CardTitle></CardHeader>
           <CardContent>
@@ -491,7 +523,6 @@ export function Reports() {
           </CardContent>
         </Card>
 
-        {/* Sponsorships by Type */}
         <Card>
           <CardHeader><CardTitle>Sponsorships by Sponsor Type</CardTitle></CardHeader>
           <CardContent>
@@ -516,7 +547,6 @@ export function Reports() {
           </CardContent>
         </Card>
 
-        {/* Status Breakdown */}
         <Card>
           <CardHeader><CardTitle>Status Breakdown</CardTitle></CardHeader>
           <CardContent>
@@ -540,14 +570,23 @@ export function Reports() {
             </div>
           </CardContent>
         </Card>
-
       </div>
 
       {/* ─── SPONSORSHIP RECORDS TABLE ────────────────────────────────────────── */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Sponsorship Records</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle>Sponsorship Records</CardTitle>
+              {hasActiveColFilters && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold">
+                  {tableFilteredDonors.length} result{tableFilteredDonors.length !== 1 ? 's' : ''}
+                  <button onClick={clearColFilters} className="ml-0.5 hover:text-orange-900 transition-colors" title="Clear column filters">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              )}
+            </div>
             <Button variant="secondary" onClick={handleExportPDF}>
               <Download className="h-4 w-4 mr-2" /> Export PDF
             </Button>
@@ -557,10 +596,87 @@ export function Reports() {
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
+                {/* ── Column headers ── */}
                 <tr>
-                  {['Project','Sponsor','Amount','Type','Status','Delivery Date','Due Date'].map((h) => (
+                  {['Project', 'Sponsor', 'Amount', 'Type', 'Status', 'Delivery Date', 'Due Date'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
                   ))}
+                </tr>
+                {/* ── Per-column filter row ── */}
+                <tr className="bg-orange-50/60 border-t border-orange-100">
+                  {/* Project */}
+                  <th className="px-3 py-2">
+                    <input
+                      type="text"
+                      value={colFilters.project}
+                      onChange={setCol('project')}
+                      placeholder="Filter…"
+                      className="w-full text-xs rounded-md border border-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent placeholder-gray-300"
+                    />
+                  </th>
+                  {/* Sponsor */}
+                  <th className="px-3 py-2">
+                    <input
+                      type="text"
+                      value={colFilters.sponsor}
+                      onChange={setCol('sponsor')}
+                      placeholder="Filter…"
+                      className="w-full text-xs rounded-md border border-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent placeholder-gray-300"
+                    />
+                  </th>
+                  {/* Amount */}
+                  <th className="px-3 py-2">
+                    <input
+                      type="text"
+                      value={colFilters.amount}
+                      onChange={setCol('amount')}
+                      placeholder=">500000…"
+                      title="Type a number, >500000, or <100000"
+                      className="w-full text-xs rounded-md border border-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent placeholder-gray-300"
+                    />
+                  </th>
+                  {/* Type */}
+                  <th className="px-3 py-2">
+                    <select
+                      value={colFilters.type}
+                      onChange={setCol('type')}
+                      className="w-full text-xs rounded-md border border-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent bg-white"
+                    >
+                      <option value="All">All</option>
+                      {uniqueTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </th>
+                  {/* Status */}
+                  <th className="px-3 py-2">
+                    <select
+                      value={colFilters.status}
+                      onChange={setCol('status')}
+                      className="w-full text-xs rounded-md border border-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent bg-white"
+                    >
+                      <option value="All">All</option>
+                      {uniqueStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </th>
+                  {/* Delivery Date */}
+                  <th className="px-3 py-2">
+                    <input
+                      type="text"
+                      value={colFilters.deliveryDate}
+                      onChange={setCol('deliveryDate')}
+                      placeholder="YYYY-MM…"
+                      className="w-full text-xs rounded-md border border-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent placeholder-gray-300"
+                    />
+                  </th>
+                  {/* Due Date */}
+                  <th className="px-3 py-2">
+                    <input
+                      type="text"
+                      value={colFilters.dueDate}
+                      onChange={setCol('dueDate')}
+                      placeholder="YYYY-MM…"
+                      className="w-full text-xs rounded-md border border-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent placeholder-gray-300"
+                    />
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -580,17 +696,28 @@ export function Reports() {
                     <td className="px-4 py-3 text-sm text-gray-500">{d.dueDate ? new Date(d.dueDate).toISOString().split('T')[0] : '-'}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">No sponsorship records found.</td></tr>
+                  <tr>
+                    <td colSpan={7} className="px-4 py-10 text-center">
+                      <p className="text-sm text-gray-400">No records match the current filters.</p>
+                      {hasActiveColFilters && (
+                        <button onClick={clearColFilters} className="mt-2 text-xs text-orange-500 hover:text-orange-700 font-medium underline">
+                          Clear column filters
+                        </button>
+                      )}
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </div>
 
           {/* ─── PAGINATION ───────────────────────────────────────────────────── */}
-          {filteredDonors.length > 0 && (
+          {tableFilteredDonors.length > 0 && (
             <div className="flex items-center justify-between mt-4 px-1">
               <p className="text-sm text-gray-500">
-                Showing <span className="font-medium">{(safePage - 1) * PAGE_SIZE + 1}</span>–<span className="font-medium">{Math.min(safePage * PAGE_SIZE, filteredDonors.length)}</span> of <span className="font-medium">{filteredDonors.length}</span> records
+                Showing <span className="font-medium">{(safePage - 1) * PAGE_SIZE + 1}</span>–
+                <span className="font-medium">{Math.min(safePage * PAGE_SIZE, tableFilteredDonors.length)}</span> of{' '}
+                <span className="font-medium">{tableFilteredDonors.length}</span> records
               </p>
               <div className="flex items-center gap-1">
                 <button
