@@ -4,7 +4,7 @@ import {
   AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
 import {
-  ArrowUpRight, Users, Megaphone, Activity, Clock, ChevronRight, CheckCircle
+  ArrowUpRight, Users, Activity, Clock, ChevronRight, CheckCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { useData } from '../context/DataContext';
@@ -32,36 +32,47 @@ export function Dashboard() {
   const { donors } = useData();
   const navigate = useNavigate();
 
-  // ── Stats ──────────────────────────────────────────────────────────────────
+  // ── Current year filter ────────────────────────────────────────────────────
+  const currentYear = new Date().getFullYear();
+
+  const currentYearDonors = useMemo(
+    () => donors.filter((d) => {
+      const dt = parseDateSafe(d.deliveryDate);
+      return dt && dt.getFullYear() === currentYear;
+    }),
+    [donors, currentYear]
+  );
+
+  // ── Stats (current year only) ──────────────────────────────────────────────
   const totalAmount = useMemo(
-    () => donors.reduce((sum, d) => sum + Number(d.amount || 0), 0),
-    [donors]
+    () => currentYearDonors.reduce((sum, d) => sum + Number(d.amount || 0), 0),
+    [currentYearDonors]
   );
 
   const activeCount = useMemo(
-    () => donors.filter((d) => normalizeStatus(d.status) === 'Active').length,
-    [donors]
+    () => currentYearDonors.filter((d) => normalizeStatus(d.status) === 'Active').length,
+    [currentYearDonors]
   );
 
   const completedCount = useMemo(
-    () => donors.filter((d) => normalizeStatus(d.status) === 'Completed').length,
-    [donors]
+    () => currentYearDonors.filter((d) => normalizeStatus(d.status) === 'Completed').length,
+    [currentYearDonors]
   );
 
   const uniqueSponsors = useMemo(
-    () => new Set(donors.map((d) => d.sponsor).filter(Boolean)).size,
-    [donors]
+    () => new Set(currentYearDonors.map((d) => d.sponsor).filter(Boolean)).size,
+    [currentYearDonors]
   );
 
   const stats = [
-   {
-  title: 'Total Sponsorship Amount',
-  value: `₱${totalAmount.toLocaleString()}`,
-  change: `${donors.length} total records`,
-  icon: () => <span className="text-lg font-bold leading-none">₱</span>,
-  color: 'bg-green-50 text-green-600',
-  border: 'border-l-4 border-l-green-500',
-},
+    {
+      title: 'Total Sponsorship Amount',
+      value: `₱${totalAmount.toLocaleString()}`,
+      change: `${currentYearDonors.length} records in ${currentYear}`,
+      icon: () => <span className="text-lg font-bold leading-none">₱</span>,
+      color: 'bg-green-50 text-green-600',
+      border: 'border-l-4 border-l-green-500',
+    },
     {
       title: 'Active Sponsorships',
       value: activeCount.toString(),
@@ -88,21 +99,21 @@ export function Dashboard() {
     },
   ];
 
-  // ── Monthly trend by deliveryDate ──────────────────────────────────────────
+  // ── Monthly trend by deliveryDate (current year only) ─────────────────────
   const monthlyTrendData = useMemo(() =>
     MONTHS.map((name, i) => ({
       name,
-      amount: donors
+      amount: currentYearDonors
         .filter((d) => { const dt = parseDateSafe(d.deliveryDate); return dt && dt.getMonth() === i; })
         .reduce((sum, d) => sum + Number(d.amount || 0), 0),
     })),
-    [donors]
+    [currentYearDonors]
   );
 
-  // ── Amount by program ──────────────────────────────────────────────────────
+  // ── Amount by program (current year only) ─────────────────────────────────
   const byProgramData = useMemo(() => {
     const map = new Map();
-    donors.forEach((d) => {
+    currentYearDonors.forEach((d) => {
       const key = d.project || 'Unknown';
       map.set(key, (map.get(key) || 0) + Number(d.amount || 0));
     });
@@ -113,38 +124,38 @@ export function Dashboard() {
         name: name.length > 15 ? name.substring(0, 15) + '…' : name,
         amount,
       }));
-  }, [donors]);
+  }, [currentYearDonors]);
 
-  // ── By sponsor type (pie) ──────────────────────────────────────────────────
+  // ── By sponsor type / source of funds (current year only) ─────────────────
   const byTypeData = useMemo(() => {
     const map = new Map();
-    donors.forEach((d) => {
+    currentYearDonors.forEach((d) => {
       const t = d.type || 'Unknown';
       map.set(t, (map.get(t) || 0) + 1);
     });
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [donors]);
+  }, [currentYearDonors]);
 
-  // ── By status breakdown ────────────────────────────────────────────────────
+  // ── By status breakdown (current year only) ───────────────────────────────
   const byStatusData = useMemo(() => {
     const map = new Map();
-    donors.forEach((d) => {
+    currentYearDonors.forEach((d) => {
       const s = normalizeStatus(d.status);
       map.set(s, (map.get(s) || 0) + 1);
     });
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [donors]);
+  }, [currentYearDonors]);
 
-  // ── Recent records ─────────────────────────────────────────────────────────
+  // ── Recent records (current year only) ────────────────────────────────────
   const recentRecords = useMemo(() =>
-    [...donors]
+    [...currentYearDonors]
       .sort((a, b) => {
         const da = parseDateSafe(a.deliveryDate)?.getTime() || 0;
         const db = parseDateSafe(b.deliveryDate)?.getTime() || 0;
         return db - da;
       })
       .slice(0, 6),
-    [donors]
+    [currentYearDonors]
   );
 
   return (
@@ -154,7 +165,7 @@ export function Dashboard() {
       <div className="flex items-center justify-between pt-1">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 leading-tight">Dashboard Overview</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Sponsorship records at a glance.</p>
+          <p className="text-sm text-gray-500 mt-0.5">{currentYear} sponsorship records at a glance.</p>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-500 bg-white px-4 py-2.5 rounded-xl border border-gray-200 shadow-sm whitespace-nowrap">
           <Clock className="h-4 w-4 shrink-0" />
@@ -378,7 +389,7 @@ export function Dashboard() {
               {recentRecords.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-10 text-center text-sm text-gray-400">
-                    No sponsorship records yet.
+                    No sponsorship records for {currentYear} yet.
                   </td>
                 </tr>
               )}
