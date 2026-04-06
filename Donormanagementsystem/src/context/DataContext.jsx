@@ -526,7 +526,6 @@ export const DataProvider = ({ children }) => {
     fetchCommTemplates();
     fetchCommWorkflows();
     fetchCommHistory();
-    fetchContactMessages();
   }, [token]);
 
   const value = useMemo(
