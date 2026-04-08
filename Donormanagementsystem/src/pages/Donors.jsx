@@ -314,8 +314,15 @@ export function Donors() {
     setIsModalOpen(false);
   };
 
-  const getImageDataUrl = (url) =>
+const getImageDataUrl = (att) =>
   new Promise((resolve) => {
+    // If we have the original File object (newly added), use it directly
+    const src = att.file
+      ? URL.createObjectURL(att.file)
+      : att.url;
+
+    if (!src) return resolve(null);
+
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
@@ -323,10 +330,13 @@ export function Donors() {
       canvas.width = img.width;
       canvas.height = img.height;
       canvas.getContext('2d').drawImage(img, 0, 0);
-      resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), w: img.width, h: img.height });
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      // Revoke only if we created a new object URL
+      if (att.file) URL.revokeObjectURL(src);
+      resolve({ dataUrl, w: img.width, h: img.height });
     };
     img.onerror = () => resolve(null);
-    img.src = url;
+    img.src = src;
   });
 
 const handleDownloadSummary = async () => {
@@ -370,7 +380,7 @@ const handleDownloadSummary = async () => {
   if (currentDonor.contact) doc.text(currentDonor.contact,40,sponsorY);
 
   // ── Table header ──────────────────────────────────────────────────────────
-  const COL = {desc:52,prog:240,due:350,status:435,amt:W-52};
+  const COL = {desc:52,prog:220,due:360,status:450,amt:W-40};
   const tableTop = 192;
   doc.setFillColor(...orange); doc.rect(40,tableTop,W-80,22,'F');
   doc.setTextColor(...white); doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
@@ -421,9 +431,10 @@ const handleDownloadSummary = async () => {
       doc.setTextColor(...gray); doc.setFont('helvetica','italic'); doc.setFontSize(8);
       doc.text(snapDesc,COL.desc+18,rowY+16);
       doc.setTextColor(100,100,100); doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
-      doc.text(snap.project||'-',COL.prog,rowY+16);
-      doc.text(formatDate(snap.dueDate),COL.due,rowY+16);
-      doc.text(normalizeStatus(snap.status),COL.status,rowY+16);
+     const snapProg = (snap.project||'-').length > 18 ? (snap.project||'-').slice(0,18)+'…' : (snap.project||'-');
+     doc.text(snapProg, COL.prog, rowY+16);
+     doc.text(formatDate(snap.dueDate), COL.due, rowY+16);
+     doc.text(normalizeStatus(snap.status), COL.status, rowY+16);      
       doc.setTextColor(150,150,150); doc.setFont('helvetica','normal');
       doc.text(`PHP ${Number(snap.amount||0).toLocaleString()}`,COL.amt,rowY+16,{align:'right'});
       doc.setDrawColor(220,220,220); doc.setLineWidth(0.3); doc.rect(40,rowY,W-80,24,'S');
@@ -547,7 +558,7 @@ const handleDownloadSummary = async () => {
     );
 
     for (const att of imageAttachments) {
-      const result = await getImageDataUrl(att.url);
+      const result = await getImageDataUrl(att);
       if (!result) continue;
 
       doc.addPage();
