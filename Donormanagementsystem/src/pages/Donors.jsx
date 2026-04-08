@@ -253,16 +253,25 @@ export function Donors() {
   // ── Attachment handlers ────────────────────────────────────────────────────
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files || []);
-    const newAttachments = files.map((file) => ({
-      id: `${Date.now()}-${Math.random()}`,
-      file,
-      title: file.name.replace(/\.[^/.]+$/, ''),
-      name: file.name,
-      size: file.size,
-      url: URL.createObjectURL(file),
-      existing: false,
-    }));
-    setAttachments((prev) => [...prev, ...newAttachments]);
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target.result;
+        setAttachments((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            file,
+            title: file.name.replace(/\.[^/.]+$/, ''),
+            name: file.name,
+            size: file.size,
+            url: dataUrl,   // ← base64 data URL, survives forever
+            existing: false,
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -316,24 +325,17 @@ export function Donors() {
 
 const getImageDataUrl = (att) =>
   new Promise((resolve) => {
-    // If we have the original File object (newly added), use it directly
-    const src = att.file
-      ? URL.createObjectURL(att.file)
-      : att.url;
-
+    const src = att.url; // now always a base64 data URL
     if (!src) return resolve(null);
 
+    // If it's already a base64 data URL, extract dimensions via Image
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.onload = () => {
       const canvas = document.createElement('canvas');
       canvas.width = img.width;
       canvas.height = img.height;
       canvas.getContext('2d').drawImage(img, 0, 0);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      // Revoke only if we created a new object URL
-      if (att.file) URL.revokeObjectURL(src);
-      resolve({ dataUrl, w: img.width, h: img.height });
+      resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), w: img.width, h: img.height });
     };
     img.onerror = () => resolve(null);
     img.src = src;
