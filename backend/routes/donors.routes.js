@@ -18,6 +18,23 @@ const toUnitsString = (val) => {
   return String(val).trim();
 };
 
+// Helper — stringify attachments array for MySQL JSON column
+const toAttachmentsJSON = (val) => {
+  if (!val || !Array.isArray(val)) return JSON.stringify([]);
+  return JSON.stringify(val);
+};
+
+// Helper — parse attachments JSON string back to array
+const parseAttachments = (val) => {
+  if (!val) return [];
+  try {
+    const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 // ── GET all donors — join campaign title ──────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
@@ -27,7 +44,14 @@ router.get('/', async (req, res) => {
       LEFT JOIN campaigns c ON c.id = d.campaign_id
       ORDER BY d.id DESC
     `);
-    res.json(rows);
+
+    // Parse attachments JSON string → array for every row
+    const parsed = rows.map((row) => ({
+      ...row,
+      attachments: parseAttachments(row.attachments),
+    }));
+
+    res.json(parsed);
   } catch (err) {
     console.error('GET /donors error:', err);
     res.status(500).json({ message: 'Server error' });
@@ -53,6 +77,7 @@ router.post('/', async (req, res) => {
       contact,
       tranches,
       campaign_id,
+      attachments,   // ← NEW
     } = req.body;
 
     if (!sponsor || !type || !status) {
@@ -66,14 +91,14 @@ router.post('/', async (req, res) => {
 
     const sql = `
       INSERT INTO donors
-        (project, description, units, deliveryDate, dueDate, sponsor, amount, type, status, email, contact, tranches, campaign_id, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (project, description, units, deliveryDate, dueDate, sponsor, amount, type, status, email, contact, tranches, campaign_id, attachments, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
       project      || null,
       description  || null,
-      toUnitsString(units),          // ← FIXED: stored as string, not Number
+      toUnitsString(units),
       toDateOnly(deliveryDate),
       toDateOnly(dueDate),
       sponsor,
@@ -84,6 +109,7 @@ router.post('/', async (req, res) => {
       contact      || null,
       Number(tranches || 0),
       campaign_id ? Number(campaign_id) : null,
+      toAttachmentsJSON(attachments),   // ← NEW
       createdBy,
     ];
 
@@ -104,6 +130,7 @@ router.post('/', async (req, res) => {
       contact:      contact      || null,
       tranches:     Number(tranches || 0),
       campaign_id:  campaign_id ? Number(campaign_id) : null,
+      attachments:  Array.isArray(attachments) ? attachments : [],  // ← NEW
       created_by:   createdBy,
     });
   } catch (err) {
@@ -131,6 +158,7 @@ router.put('/:id', async (req, res) => {
       contact,
       tranches,
       campaign_id,
+      attachments,   // ← NEW
     } = req.body;
 
     const sql = `
@@ -149,6 +177,7 @@ router.put('/:id', async (req, res) => {
         contact      = ?,
         tranches     = ?,
         campaign_id  = ?,
+        attachments  = ?,
         created_by   = COALESCE(created_by, ?)
       WHERE id = ?
     `;
@@ -156,7 +185,7 @@ router.put('/:id', async (req, res) => {
     const values = [
       project      || null,
       description  || null,
-      toUnitsString(units),          // ← FIXED: stored as string, not Number
+      toUnitsString(units),
       toDateOnly(deliveryDate),
       toDateOnly(dueDate),
       sponsor,
@@ -167,6 +196,7 @@ router.put('/:id', async (req, res) => {
       contact      || null,
       Number(tranches || 0),
       campaign_id ? Number(campaign_id) : null,
+      toAttachmentsJSON(attachments),   // ← NEW
       req.user?.email || null,
       id,
     ];
@@ -227,7 +257,7 @@ router.post('/:id/history', async (req, res) => {
       id,
       snapshot.project      || null,
       snapshot.description  || null,
-      toUnitsString(snapshot.units), // ← FIXED: stored as string, not Number
+      toUnitsString(snapshot.units),
       toDateOnly(snapshot.deliveryDate),
       toDateOnly(snapshot.dueDate),
       snapshot.sponsor      || null,
