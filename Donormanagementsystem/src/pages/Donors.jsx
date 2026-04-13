@@ -352,8 +352,14 @@ const resolveCampaignId = () => {
   const handleRemoveAttachment = (id) =>
     setAttachments((prev) => prev.filter((a) => a.id !== id));
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+ const [isSubmitting, setIsSubmitting] = useState(false);
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (isSubmitting) return;
+  setIsSubmitting(true);
+
+  try {
     const serializedAttachments = attachments.map((a) => ({
       id: a.id,
       title: a.title,
@@ -389,7 +395,10 @@ const resolveCampaignId = () => {
       await addDonor(newDonor);
     }
     setIsModalOpen(false);
-  };
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const getImageDataUrl = (att) =>
     new Promise((resolve) => {
@@ -1074,7 +1083,9 @@ const resolveCampaignId = () => {
               {modalPage === 1 ? (
                 <Button type="button" onClick={() => setModalPage(2)}>Next: Attachments →</Button>
               ) : (
-                <Button type="submit">Save Record</Button>
+                <Button type="submit" disabled={isSubmitting}>
+  {isSubmitting ? 'Saving...' : 'Save Record'}
+</Button>
               )}
             </div>
           </div>
