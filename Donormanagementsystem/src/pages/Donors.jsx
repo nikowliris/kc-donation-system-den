@@ -283,34 +283,28 @@ export function Donors() {
     return [count, label].filter(Boolean).join(' ');
   };
 
-  // ── FIXED: resolveCampaignId no longer auto-links "Others" or custom program names ──
-  const resolveCampaignId = () => {
-    // 1. If user explicitly set a linked campaign via the override field, use that first
-    const title = (form.campaign_id || '').trim();
-    if (title) {
-      if (/^\d+$/.test(title)) return Number(title);
-      const match = (campaigns || []).find(
-        (c) => c.title.toLowerCase() === title.toLowerCase()
-      );
-      if (match) return Number(match.id);
-    }
+ const resolveCampaignId = () => {
+  // 1. If user explicitly set a linked campaign via the override field, use that first
+  const title = (form.campaign_id || '').trim();
+  if (title) {
+    if (/^\d+$/.test(title)) return Number(title);
+    const match = (campaigns || []).find(
+      (c) => c.title.toLowerCase() === title.toLowerCase()
+    );
+    if (match) return Number(match.id);
+  }
 
-    // 2. Fall back: only auto-link if the program is a known built-in program name
-    //    (never auto-link "Others" or custom-typed names to any campaign)
-    const programName = resolveProject();
-    if (
-      programName &&
-      programName !== 'Others' &&
-      isKnownProgram(programName)
-    ) {
-      const match = (campaigns || []).find(
-        (c) => c.title.toLowerCase() === programName.toLowerCase()
-      );
-      if (match) return Number(match.id);
-    }
+  // 2. Auto-link known programs by matching campaign title
+  const programName = resolveProject();
+  if (programName) {
+    const match = (campaigns || []).find(
+      (c) => c.title.toLowerCase() === programName.toLowerCase()
+    );
+    if (match) return Number(match.id);
+  }
 
-    return null;
-  };
+  return null;
+};
 
   // ── Attachment handlers ───────────────────────────────────────────────────
 
@@ -889,7 +883,7 @@ export function Donors() {
                     </div>
                   )}
                   {/* Show matched project hint — only for known programs, never for Others */}
-                  {form.project && form.project !== 'Others' && (() => {
+                  {form.project && (() => {
                     const matched = (campaigns || []).find(
                       (c) => c.title.toLowerCase() === form.project.toLowerCase()
                     );
