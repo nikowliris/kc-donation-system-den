@@ -283,7 +283,7 @@ export function Donors() {
     return [count, label].filter(Boolean).join(' ');
   };
 
- const resolveCampaignId = () => {
+const resolveCampaignId = () => {
   // 1. If user explicitly set a linked campaign via the override field, use that first
   const title = (form.campaign_id || '').trim();
   if (title) {
@@ -294,13 +294,21 @@ export function Donors() {
     if (match) return Number(match.id);
   }
 
-  // 2. Auto-link known programs by matching campaign title
+  // 2. Try to match campaign by exact program name
   const programName = resolveProject();
   if (programName) {
-    const match = (campaigns || []).find(
+    const exactMatch = (campaigns || []).find(
       (c) => c.title.toLowerCase() === programName.toLowerCase()
     );
-    if (match) return Number(match.id);
+    if (exactMatch) return Number(exactMatch.id);
+  }
+
+  // 3. If program is not a known built-in, fall back to "Others" campaign
+  if (!isKnownProgram(resolveProject())) {
+    const othersMatch = (campaigns || []).find(
+      (c) => c.title.toLowerCase() === 'others'
+    );
+    if (othersMatch) return Number(othersMatch.id);
   }
 
   return null;
