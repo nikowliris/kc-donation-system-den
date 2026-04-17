@@ -34,7 +34,8 @@ export function Login() {
       }
 
       login(data.token, data.user);
-      navigate("/", { replace: true });
+sessionStorage.removeItem(`due-notif-${new Date().toISOString().split('T')[0]}`);
+navigate("/", { replace: true });
     } catch (err) {
       setError("Server error");
     }

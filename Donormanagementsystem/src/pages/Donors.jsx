@@ -163,7 +163,7 @@ export function Donors() {
   due.setHours(0, 0, 0, 0);
   return (
     due.getTime() <= tomorrow.getTime() &&
-    normalizeStatus(d.status) === 'Active'
+    normalizeStatus(d.status) !== 'Completed'
   );
 });
 
