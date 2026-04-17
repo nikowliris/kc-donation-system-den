@@ -54,6 +54,7 @@ export function Donors() {
   const [profileTab, setProfileTab] = useState('details');
   const [donorHistory, setDonorHistory] = useState([]);
   const [modalPage, setModalPage] = useState(1);
+  const [dueNotif, setDueNotif] = useState({ open: false, donors: [] }); // ← NEW
 
   const [form, setForm] = useState(blankForm);
   const setField = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
@@ -148,38 +149,45 @@ export function Donors() {
 
   useEffect(() => { setCurrentPage(1); }, [searchTerm, typeFilter]);
 
+  // ── Due date notification (modal popup) ──────────────────────────────────
   useEffect(() => {
     if (!donors || donors.length === 0) return;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const threeDaysLater = new Date(today);
-    threeDaysLater.setDate(today.getDate() + 3);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
     const dueSoon = donors.filter((d) => {
       if (!d.dueDate) return false;
       const due = new Date(d.dueDate);
       due.setHours(0, 0, 0, 0);
-      return due >= today && due <= threeDaysLater && normalizeStatus(d.status) === 'Active';
+      return (
+        (due.getTime() === today.getTime() || due.getTime() === tomorrow.getTime()) &&
+        normalizeStatus(d.status) === 'Active'
+      );
     });
+
     if (dueSoon.length === 0) return;
-    const lines = dueSoon.map((d) =>
-      `• ${d.sponsor} — ${d.project} | Due: ${formatDate(d.dueDate)} | Amount: PHP ${Number(d.amount || 0).toLocaleString()}`
-    ).join('\n');
-    const subject = encodeURIComponent(`⚠️ ${dueSoon.length} Sponsorship Record(s) Due Within 3 Days`);
-    const body = encodeURIComponent(
-      `Good day,\n\nThe following sponsorship records are due within the next 3 days:\n\n${lines}\n\nPlease take the necessary action.\n\n— Knowledge Channel Foundation System`
-    );
+
     const notifKey = `due-notif-${today.toISOString().split('T')[0]}`;
     if (sessionStorage.getItem(notifKey)) return;
     sessionStorage.setItem(notifKey, '1');
-    setTimeout(() => {
-      const confirmed = window.confirm(
-        `⚠️ ${dueSoon.length} record(s) are due within 3 days:\n\n${dueSoon.map(d => `• ${d.sponsor} — ${d.project} (${formatDate(d.dueDate)})`).join('\n')}\n\nClick OK to open your email and send a notification.`
-      );
-      if (confirmed) {
-        window.open(`mailto:${user?.email || ''}?subject=${subject}&body=${body}`, '_blank');
-      }
-    }, 800);
+
+    setTimeout(() => setDueNotif({ open: true, donors: dueSoon }), 800);
   }, [donors]);
+
+  // ── Due notif email handler ───────────────────────────────────────────────
+  const handleDueNotifEmail = () => {
+    const lines = dueNotif.donors.map((d) =>
+      `• ${d.sponsor} — ${d.project} | Due: ${formatDate(d.dueDate)} | Amount: PHP ${Number(d.amount || 0).toLocaleString()}`
+    ).join('\n');
+    const subject = encodeURIComponent(`⚠️ ${dueNotif.donors.length} Sponsorship Record(s) Due Soon`);
+    const body = encodeURIComponent(
+      `Good day,\n\nThe following sponsorship records are due today or tomorrow:\n\n${lines}\n\nPlease take the necessary action.\n\n— Knowledge Channel Foundation System`
+    );
+    window.open(`mailto:${user?.email || ''}?subject=${subject}&body=${body}`, '_blank');
+    setDueNotif({ open: false, donors: [] });
+  };
 
   // ── Filtered + grouped donors ─────────────────────────────────────────────
 
@@ -283,40 +291,34 @@ export function Donors() {
     return [count, label].filter(Boolean).join(' ');
   };
 
-const resolveCampaignId = () => {
-  // 1. If user explicitly set a linked campaign via the override field, use that first
-  const title = (form.campaign_id || '').trim();
-  if (title) {
-    if (/^\d+$/.test(title)) return Number(title);
-    const match = (campaigns || []).find(
-      (c) => c.title.toLowerCase() === title.toLowerCase()
-    );
-    if (match) return Number(match.id);
-  }
-
-  // 2. Try to match campaign by exact program name
-  const programName = resolveProject();
-  if (programName) {
-    const exactMatch = (campaigns || []).find(
-      (c) => c.title.toLowerCase() === programName.toLowerCase()
-    );
-    if (exactMatch) return Number(exactMatch.id);
-  }
-
-  // 3. If program is not a known built-in, fall back to "Others" campaign
-  if (!isKnownProgram(resolveProject())) {
-    const othersMatch = (campaigns || []).find(
-      (c) => c.title.toLowerCase() === 'others'
-    );
-    if (othersMatch) return Number(othersMatch.id);
-  }
-
-  return null;
-};
+  const resolveCampaignId = () => {
+    const title = (form.campaign_id || '').trim();
+    if (title) {
+      if (/^\d+$/.test(title)) return Number(title);
+      const match = (campaigns || []).find(
+        (c) => c.title.toLowerCase() === title.toLowerCase()
+      );
+      if (match) return Number(match.id);
+    }
+    const programName = resolveProject();
+    if (programName) {
+      const exactMatch = (campaigns || []).find(
+        (c) => c.title.toLowerCase() === programName.toLowerCase()
+      );
+      if (exactMatch) return Number(exactMatch.id);
+    }
+    if (!isKnownProgram(resolveProject())) {
+      const othersMatch = (campaigns || []).find(
+        (c) => c.title.toLowerCase() === 'others'
+      );
+      if (othersMatch) return Number(othersMatch.id);
+    }
+    return null;
+  };
 
   // ── Attachment handlers ───────────────────────────────────────────────────
 
-  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+  const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files || []);
@@ -352,53 +354,52 @@ const resolveCampaignId = () => {
   const handleRemoveAttachment = (id) =>
     setAttachments((prev) => prev.filter((a) => a.id !== id));
 
- const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  if (isSubmitting) return;
-  setIsSubmitting(true);
-
-  try {
-    const serializedAttachments = attachments.map((a) => ({
-      id: a.id,
-      title: a.title,
-      name: a.name || (a.file ? a.file.name : ''),
-      size: a.size || (a.file ? a.file.size : 0),
-      url: a.url || null,
-    }));
-    const newDonor = {
-      id:            currentDonor ? currentDonor.id : undefined,
-      sponsor:       form.sponsor,
-      contactPerson: form.contactPerson || null,
-      contact:       form.contact       || null,
-      email:         form.email         || null,
-      project:       resolveProject(),
-      campaign_id:   resolveCampaignId(),
-      units:         resolveUnits(),
-      deliveryDate:  form.deliveryDate || null,
-      dueDate:       form.dueDate      || null,
-      amount:        Number(form.amount   || 0),
-      tranches:      Number(form.tranches || 0),
-      type:          form.type,
-      status:        normalizeStatus(form.status),
-      description:   form.description  || null,
-      attachments:   serializedAttachments,
-    };
-    if (currentDonor) {
-      await saveDonorSnapshot(currentDonor.id, { ...currentDonor });
-      await updateDonor(newDonor);
-      const updated = await fetchDonorHistory(currentDonor.id);
-      setDonorHistory(updated);
-      setCurrentDonor((prev) => ({ ...prev, ...newDonor }));
-    } else {
-      await addDonor(newDonor);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const serializedAttachments = attachments.map((a) => ({
+        id: a.id,
+        title: a.title,
+        name: a.name || (a.file ? a.file.name : ''),
+        size: a.size || (a.file ? a.file.size : 0),
+        url: a.url || null,
+      }));
+      const newDonor = {
+        id:            currentDonor ? currentDonor.id : undefined,
+        sponsor:       form.sponsor,
+        contactPerson: form.contactPerson || null,
+        contact:       form.contact       || null,
+        email:         form.email         || null,
+        project:       resolveProject(),
+        campaign_id:   resolveCampaignId(),
+        units:         resolveUnits(),
+        deliveryDate:  form.deliveryDate || null,
+        dueDate:       form.dueDate      || null,
+        amount:        Number(form.amount   || 0),
+        tranches:      Number(form.tranches || 0),
+        type:          form.type,
+        status:        normalizeStatus(form.status),
+        description:   form.description  || null,
+        attachments:   serializedAttachments,
+      };
+      if (currentDonor) {
+        await saveDonorSnapshot(currentDonor.id, { ...currentDonor });
+        await updateDonor(newDonor);
+        const updated = await fetchDonorHistory(currentDonor.id);
+        setDonorHistory(updated);
+        setCurrentDonor((prev) => ({ ...prev, ...newDonor }));
+      } else {
+        await addDonor(newDonor);
+      }
+      setIsModalOpen(false);
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsModalOpen(false);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   const getImageDataUrl = (att) =>
     new Promise((resolve) => {
@@ -431,9 +432,9 @@ const handleSubmit = async (e) => {
     doc.text('Congressional Ave., Quezon City, Metro Manila',105,57);
     doc.text('finance@knowledgechannel.org',105,69);
     const recCountKey = 'kc_rec_counter';
-const nextNum = parseInt(localStorage.getItem(recCountKey) || '0', 10) + 1;
-localStorage.setItem(recCountKey, String(nextNum));
-const statNo = `REC-${String(nextNum).padStart(3, '0')}`;
+    const nextNum = parseInt(localStorage.getItem(recCountKey) || '0', 10) + 1;
+    localStorage.setItem(recCountKey, String(nextNum));
+    const statNo = `REC-${String(nextNum).padStart(3, '0')}`;
     const today = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
     doc.setTextColor(...gray); doc.setFontSize(8); doc.setFont('helvetica','normal');
     doc.text('Record No.',W-40,35,{align:'right'});
@@ -695,28 +696,29 @@ const statNo = `REC-${String(nextNum).padStart(3, '0')}`;
     }
     return val;
   };
+
   const handleRequestToProceed = (row) => {
-  const linkedCampaign = getLinkedCampaign(row);
-  const subject = encodeURIComponent(
-    `Request to Proceed – ${row.project || 'Sponsorship'} | ${row.sponsor}`
-  );
-  const body = encodeURIComponent(
-    `Good day,\n\nWe would like to formally request approval to proceed with the following sponsorship record:\n\n` +
-    `Sponsor       : ${row.sponsor || '—'}\n` +
-    `Contact Person: ${row.contactPerson || '—'}\n` +
-    `Program       : ${row.project || '—'}\n` +
-    (linkedCampaign ? `Linked Project: ${linkedCampaign.title}\n` : '') +
-    `Amount        : PHP ${Number(row.amount || 0).toLocaleString()}\n` +
-    `Tranches      : ${row.tranches || '—'}\n` +
-    `Payment Date  : ${formatDate(row.deliveryDate)}\n` +
-    `Due Date      : ${formatDate(row.dueDate)}\n` +
-    `Status        : ${normalizeStatus(row.status)}\n` +
-    (row.description ? `\nDescription:\n${row.description}\n` : '') +
-    `\nKindly review and provide your approval at your earliest convenience.\n\n` +
-    `— Knowledge Channel Foundation System`
-  );
-  window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
-};
+    const linkedCampaign = getLinkedCampaign(row);
+    const subject = encodeURIComponent(
+      `Request to Proceed – ${row.project || 'Sponsorship'} | ${row.sponsor}`
+    );
+    const body = encodeURIComponent(
+      `Good day,\n\nWe would like to formally request approval to proceed with the following sponsorship record:\n\n` +
+      `Sponsor       : ${row.sponsor || '—'}\n` +
+      `Contact Person: ${row.contactPerson || '—'}\n` +
+      `Program       : ${row.project || '—'}\n` +
+      (linkedCampaign ? `Linked Project: ${linkedCampaign.title}\n` : '') +
+      `Amount        : PHP ${Number(row.amount || 0).toLocaleString()}\n` +
+      `Tranches      : ${row.tranches || '—'}\n` +
+      `Payment Date  : ${formatDate(row.deliveryDate)}\n` +
+      `Due Date      : ${formatDate(row.dueDate)}\n` +
+      `Status        : ${normalizeStatus(row.status)}\n` +
+      (row.description ? `\nDescription:\n${row.description}\n` : '') +
+      `\nKindly review and provide your approval at your earliest convenience.\n\n` +
+      `— Knowledge Channel Foundation System`
+    );
+    window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+  };
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -808,11 +810,11 @@ const statNo = `REC-${String(nextNum).padStart(3, '0')}`;
                             <span className="text-sm font-bold text-gray-900 whitespace-nowrap text-right">₱{Number(row.amount || 0).toLocaleString()}</span>
                             <Badge variant={statusBadgeVariant(row.status)}>{normalizeStatus(row.status)}</Badge>
                             <div className="flex items-center gap-1">
-  <button onClick={() => handleViewProfile(row)} className="p-1.5 rounded-md text-gray-400 hover:text-sky-600 hover:bg-sky-50 transition-colors" title="View"><Eye className="h-4 w-4" /></button>
-  <button onClick={() => handleEditDonor(row)} className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Edit"><Edit className="h-4 w-4" /></button>
-  <button onClick={() => handleRequestToProceed(row)} className="p-1.5 rounded-md text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-colors" title="Request to Proceed"><Send className="h-4 w-4" /></button>
-  <button onClick={() => handleDeleteDonor(row.id)} className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete"><Trash className="h-4 w-4" /></button>
-</div>
+                              <button onClick={() => handleViewProfile(row)} className="p-1.5 rounded-md text-gray-400 hover:text-sky-600 hover:bg-sky-50 transition-colors" title="View"><Eye className="h-4 w-4" /></button>
+                              <button onClick={() => handleEditDonor(row)} className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors" title="Edit"><Edit className="h-4 w-4" /></button>
+                              <button onClick={() => handleRequestToProceed(row)} className="p-1.5 rounded-md text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-colors" title="Request to Proceed"><Send className="h-4 w-4" /></button>
+                              <button onClick={() => handleDeleteDonor(row.id)} className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Delete"><Trash className="h-4 w-4" /></button>
+                            </div>
                           </div>
                         );
                       })}
@@ -925,7 +927,6 @@ const statNo = `REC-${String(nextNum).padStart(3, '0')}`;
                       <Input value={form.projectOther} onChange={setField('projectOther')} placeholder="Please specify the program..." className="w-full" autoFocus />
                     </div>
                   )}
-                  {/* Show matched project hint — only for known programs, never for Others */}
                   {form.project && (() => {
                     const matched = (campaigns || []).find(
                       (c) => c.title.toLowerCase() === form.project.toLowerCase()
@@ -1110,8 +1111,8 @@ const statNo = `REC-${String(nextNum).padStart(3, '0')}`;
                 <Button type="button" onClick={() => setModalPage(2)}>Next: Attachments →</Button>
               ) : (
                 <Button type="submit" disabled={isSubmitting}>
-  {isSubmitting ? 'Saving...' : 'Save Record'}
-</Button>
+                  {isSubmitting ? 'Saving...' : 'Save Record'}
+                </Button>
               )}
             </div>
           </div>
@@ -1305,6 +1306,67 @@ const statNo = `REC-${String(nextNum).padStart(3, '0')}`;
           );
         })()}
       </Modal>
+
+      {/* ── Due Date Notification Modal ── */}
+      {dueNotif.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setDueNotif({ open: false, donors: [] })}
+          />
+          {/* Card */}
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            {/* Header */}
+            <div className="bg-amber-500 px-6 py-5 text-center relative">
+              <button
+                onClick={() => setDueNotif({ open: false, donors: [] })}
+                className="absolute right-4 top-4 text-white/70 hover:text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <div className="text-4xl mb-2">⚠️</div>
+              <h2 className="text-xl font-bold text-white">Due Date Alert</h2>
+              <p className="text-amber-100 text-sm mt-1">
+                {dueNotif.donors.length} record{dueNotif.donors.length !== 1 ? 's' : ''} due today or tomorrow
+              </p>
+            </div>
+            {/* Body */}
+            <div className="px-6 py-4 max-h-64 overflow-y-auto space-y-3">
+              {dueNotif.donors.map((d) => (
+                <div key={d.id} className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
+                  <div className="h-8 w-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-xs font-bold shrink-0">
+                    {(d.sponsor || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-gray-900 truncate">{d.sponsor}</p>
+                    <p className="text-xs text-gray-500 truncate">{d.project}</p>
+                    <p className="text-xs text-amber-600 font-semibold mt-0.5">
+                      Due: {formatDate(d.dueDate)} · PHP {Number(d.amount || 0).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+              <button
+                onClick={() => setDueNotif({ open: false, donors: [] })}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={handleDueNotifEmail}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <Send className="h-4 w-4" /> Send Email
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
