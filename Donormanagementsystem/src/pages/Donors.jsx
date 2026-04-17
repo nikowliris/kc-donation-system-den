@@ -157,15 +157,15 @@ export function Donors() {
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
 
-    const dueSoon = donors.filter((d) => {
-      if (!d.dueDate) return false;
-      const due = new Date(d.dueDate);
-      due.setHours(0, 0, 0, 0);
-      return (
-        (due.getTime() === today.getTime() || due.getTime() === tomorrow.getTime()) &&
-        normalizeStatus(d.status) === 'Active'
-      );
-    });
+  const dueSoon = donors.filter((d) => {
+  if (!d.dueDate) return false;
+  const due = new Date(d.dueDate);
+  due.setHours(0, 0, 0, 0);
+  return (
+    due.getTime() <= tomorrow.getTime() &&
+    normalizeStatus(d.status) === 'Active'
+  );
+});
 
     if (dueSoon.length === 0) return;
 
@@ -1328,7 +1328,7 @@ export function Donors() {
               <div className="text-4xl mb-2">⚠️</div>
               <h2 className="text-xl font-bold text-white">Due Date Alert</h2>
               <p className="text-amber-100 text-sm mt-1">
-                {dueNotif.donors.length} record{dueNotif.donors.length !== 1 ? 's' : ''} due today or tomorrow
+                {dueNotif.donors.length} record{dueNotif.donors.length !== 1 ? 's' : ''} due soon or overdue
               </p>
             </div>
             {/* Body */}
