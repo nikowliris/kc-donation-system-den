@@ -5,26 +5,21 @@ const { requireAuth } = require('../middleware/auth');
 
 router.use(requireAuth);
 
-// Helper — strips ISO timestamps down to YYYY-MM-DD for MySQL date columns
 const toDateOnly = (val) => {
   if (!val) return null;
   return String(val).slice(0, 10);
 };
 
-// Helper — safely stores units as a string (e.g. "25 schools", "8 KTVS")
-// Falls back to null if empty
 const toUnitsString = (val) => {
   if (val === null || val === undefined || String(val).trim() === '') return null;
   return String(val).trim();
 };
 
-// Helper — stringify attachments array for MySQL JSON column
 const toAttachmentsJSON = (val) => {
   if (!val || !Array.isArray(val)) return JSON.stringify([]);
   return JSON.stringify(val);
 };
 
-// Helper — parse attachments JSON string back to array
 const parseAttachments = (val) => {
   if (!val) return [];
   try {
@@ -35,21 +30,18 @@ const parseAttachments = (val) => {
   }
 };
 
-// ── GET all donors — join campaign title ──────────────────────────────────────
+// ── GET all donors ────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
     const [rows] = await db.query(`
-  SELECT d.*, c.title AS campaign_title
-  FROM donors d
-  LEFT JOIN campaigns c ON c.id = d.campaign_id
-`);
-
-    // Parse attachments JSON string → array for every row
+      SELECT d.*, c.title AS campaign_title
+      FROM donors d
+      LEFT JOIN campaigns c ON c.id = d.campaign_id
+    `);
     const parsed = rows.map((row) => ({
       ...row,
       attachments: parseAttachments(row.attachments),
     }));
-
     res.json(parsed);
   } catch (err) {
     console.error('GET /donors error:', err);
@@ -60,24 +52,10 @@ router.get('/', async (req, res) => {
 // ── POST create donor ─────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
   try {
-    console.log('POST /api/donors body:', req.body);
-
     const {
-      project,
-      description,
-      units,
-      deliveryDate,
-      dueDate,
-      sponsor,
-      amount,
-      type,
-      status,
-      email,
-      contact,
-      contactPerson, 
-      tranches,
-      campaign_id,
-      attachments,   // ← NEW
+      project, description, units, deliveryDate, dueDate,
+      sponsor, amount, type, status, email, contact,
+      contactPerson, tranches, campaign_id, attachments,
     } = req.body;
 
     if (!sponsor || !type || !status) {
@@ -89,11 +67,11 @@ router.post('/', async (req, res) => {
 
     const createdBy = req.user?.email || null;
 
- const sql = `
-  INSERT INTO donors
-    (project, description, units, deliveryDate, dueDate, sponsor, amount, type, status, email, contact, contactPerson, tranches, campaign_id, attachments, created_by)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`;
+    const sql = `
+      INSERT INTO donors
+        (project, description, units, deliveryDate, dueDate, sponsor, amount, type, status, email, contact, contactPerson, tranches, campaign_id, attachments, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
 
     const values = [
       project      || null,
@@ -107,10 +85,10 @@ router.post('/', async (req, res) => {
       status,
       email        || null,
       contact      || null,
-      contactPerson || null,  
+      contactPerson || null,
       Number(tranches || 0),
       campaign_id ? Number(campaign_id) : null,
-      toAttachmentsJSON(attachments),   // ← NEW
+      toAttachmentsJSON(attachments),
       createdBy,
     ];
 
@@ -129,9 +107,10 @@ router.post('/', async (req, res) => {
       status,
       email:        email        || null,
       contact:      contact      || null,
+      contactPerson: contactPerson || null,
       tranches:     Number(tranches || 0),
       campaign_id:  campaign_id ? Number(campaign_id) : null,
-      attachments:  Array.isArray(attachments) ? attachments : [],  // ← NEW
+      attachments:  Array.isArray(attachments) ? attachments : [],
       created_by:   createdBy,
     });
   } catch (err) {
@@ -146,20 +125,9 @@ router.put('/:id', async (req, res) => {
     const { id } = req.params;
 
     const {
-      project,
-      description,
-      units,
-      deliveryDate,
-      dueDate,
-      sponsor,
-      amount,
-      type,
-      status,
-      email,
-      contact,
-      tranches,
-      campaign_id,
-      attachments,   // ← NEW
+      project, description, units, deliveryDate, dueDate,
+      sponsor, amount, type, status, email, contact,
+      contactPerson, tranches, campaign_id, attachments,
     } = req.body;
 
     const sql = `
@@ -196,9 +164,10 @@ router.put('/:id', async (req, res) => {
       status,
       email        || null,
       contact      || null,
+      contactPerson || null,
       Number(tranches || 0),
       campaign_id ? Number(campaign_id) : null,
-      toAttachmentsJSON(attachments),   // ← NEW
+      toAttachmentsJSON(attachments),
       req.user?.email || null,
       id,
     ];
